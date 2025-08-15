@@ -1,0 +1,11 @@
+{
+  "name": "web-client",
+  "version": "0.0.1",
+  "private": true,
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "maplibre-gl": "^2.4.0",
+    "deck.gl": "^8.9.0"
+  }
+}

@@ -1,0 +1,12 @@
+version: '3'
+services:
+  chart-tiler:
+    build: .
+    working_dir: /workspace/chart-tiler
+    command: python -m charts_py
+  web-client:
+    image: node:18
+    working_dir: /app
+    volumes:
+      - ./web-client:/app
+    command: npm start
