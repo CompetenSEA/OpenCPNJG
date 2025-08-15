@@ -17,6 +17,7 @@ from s52_xml import (
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Report S-52 XML coverage")
     p.add_argument("--chartsymbols", type=Path, required=True)
+    p.add_argument("--baseline", type=Path)
     return p.parse_args()
 
 
@@ -38,8 +39,11 @@ def main() -> None:  # pragma: no cover - CLI helper
         print(f"Symbol {name}: {'yes' if name in symbols else 'no'}")
 
     # Style coverage -------------------------------------------------------
-    style_path = Path(__file__).resolve().parent / "dist" / "style.s52.day.json"
-    coverage_dir = Path(__file__).resolve().parent / "dist" / "coverage"
+    base = Path(__file__).resolve().parent
+    style_path = base / "dist" / "style.s52.day.json"
+    coverage_dir = base / "dist" / "coverage"
+    current_path = coverage_dir / "style_coverage.json"
+    prev_path = coverage_dir / "style_coverage.prev.json"
     tokens: list[str] = []
     layers: list[dict[str, str]] = []
     symbols_seen: set[str] = set()
@@ -59,25 +63,35 @@ def main() -> None:  # pragma: no cover - CLI helper
     covered = sorted(lookup_objs & style_objs)
     missing = sorted(lookup_objs - style_objs)
 
+    baseline: dict | None = None
+    if args.baseline and args.baseline.exists():
+        baseline = json.loads(args.baseline.read_text())
+    elif current_path.exists():
+        baseline = json.loads(current_path.read_text())
+    if baseline:
+        prev_path.parent.mkdir(parents=True, exist_ok=True)
+        prev_path.write_text(json.dumps(baseline, indent=2, sort_keys=True))
+
     coverage_dir.mkdir(parents=True, exist_ok=True)
     (coverage_dir / "symbols_seen.txt").write_text("\n".join(sorted(symbols_seen)))
-    (coverage_dir / "style_coverage.json").write_text(
-        json.dumps(
-            {
-                "totalLookups": len(lookup_objs),
-                "coveredByStyle": len(covered),
-                "missingObjL": missing,
-                "layers": layers,
-            },
-            indent=2,
-            sort_keys=True,
-        )
-    )
+    data = {
+        "totalLookups": len(lookup_objs),
+        "coveredByStyle": len(covered),
+        "missingObjL": missing,
+        "layers": layers,
+    }
+    current_path.write_text(json.dumps(data, indent=2, sort_keys=True))
 
     print("Style coverage:")
     print(f"  total lookups: {len(lookup_objs)}")
     print(f"  covered by style: {len(covered)}")
     print(f"  missing: {len(missing)}")
+    if baseline:
+        prev_missing = set(baseline.get("missingObjL", []))
+        newly = sorted(prev_missing - set(missing))
+        print(f"  delta covered: +{len(newly)}")
+        if newly:
+            print("  newly covered: " + ", ".join(newly[:20]))
 
 
 if __name__ == "__main__":

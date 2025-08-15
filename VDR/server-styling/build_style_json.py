@@ -15,7 +15,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List
 
-from s52_xml import parse_palette_colors, parse_lookups
+from s52_xml import (
+    parse_palette_colors,
+    parse_lookups,
+    parse_symbols,
+    parse_linestyles,
+)
 
 
 def _lookup_priorities(lookups: List[Dict[str, str]]) -> Dict[str, int]:
@@ -47,6 +52,8 @@ def build_layers(
     source: str,
     source_layer: str,
     priorities: Dict[str, int],
+    symbols: Dict[str, Dict[str, object]],
+    linestyles: Dict[str, Dict[str, object]],
 ) -> List[Dict[str, object]]:
     """Construct and order Tier‑1 style layers for the chosen palette."""
 
@@ -197,6 +204,127 @@ def build_layers(
         )
     )
 
+    # Point seamarks -------------------------------------------------------
+    seamarks = ["BCNLAT", "BCNCAR", "BCNISD", "BOYISD", "BOYLAT", "BOYCAR"]
+    for obj in seamarks:
+        sym_name = None
+        meta = None
+        for cand in (obj + "01", obj + "1", obj):
+            if cand in symbols:
+                sym_name = cand
+                meta = symbols[cand]
+                break
+        if not sym_name:
+            continue
+        layout: Dict[str, object] = {
+            "icon-image": [
+                "concat",
+                "{SPRITE_PREFIX}",
+                [
+                    "case",
+                    ["has", "hazardIcon"],
+                    ["get", "hazardIcon"],
+                    sym_name,
+                ],
+            ],
+            "icon-allow-overlap": True,
+            "icon-anchor": "center",
+        }
+        anchor = meta.get("anchor")
+        if anchor:
+            ax, ay = anchor
+            off_x = ax - meta.get("w", 0) / 2
+            off_y = ay - meta.get("h", 0) / 2
+            if off_x or off_y:
+                layout["icon-offset"] = [off_x, off_y]
+        if meta.get("rotate"):
+            layout["icon-rotate"] = ["coalesce", ["get", "ORIENT"], 0]
+        layers.append(
+            (
+                prio(obj, 52),
+                {
+                    "id": obj,
+                    "type": "symbol",
+                    "source": source,
+                    "source-layer": source_layer,
+                    "filter": ["==", ["get", "OBJL"], obj],
+                    "layout": layout,
+                    "metadata": {"maplibre:s52": f"{obj}-{sym_name}"},
+                },
+            )
+        )
+
+    # Caution lines --------------------------------------------------------
+    dash_map = {
+        "solid": None,
+        "dash": [4, 2],
+        "dot": [1, 2],
+        "dashdot": [4, 2, 1, 2],
+    }
+    for obj in ["CBLARE", "PIPARE"]:
+        ls_meta = None
+        for cand in (obj, obj + "01", obj + "1"):
+            if cand in linestyles:
+                ls_meta = linestyles[cand]
+                break
+        if not ls_meta:
+            continue
+        paint: Dict[str, object] = {
+            "line-color": get_colour(colors, ls_meta.get("color-token", ""), "CHBLK"),
+            "line-width": ls_meta.get("width", 1),
+        }
+        dash = dash_map.get(ls_meta.get("pattern", "solid"))
+        if dash:
+            paint["line-dasharray"] = dash
+        layers.append(
+            (
+                prio(obj, 53),
+                {
+                    "id": obj,
+                    "type": "line",
+                    "source": source,
+                    "source-layer": source_layer,
+                    "filter": ["==", ["get", "OBJL"], obj],
+                    "paint": paint,
+                    "metadata": {"maplibre:s52": f"{obj}-{ls_meta.get('color-token', '')}"},
+                },
+            )
+        )
+
+    # Area stubs ----------------------------------------------------------
+    layers.append(
+        (
+            prio("SEAARE", 10),
+            {
+                "id": "SEAARE",
+                "type": "fill",
+                "source": source,
+                "source-layer": source_layer,
+                "filter": ["==", ["get", "OBJL"], "SEAARE"],
+                "paint": {"fill-color": get_colour(colors, "DEPDW")},
+                "metadata": {"maplibre:s52": "SEAARE-DEPDW"},
+            },
+        )
+    )
+    for obj in ["ACHARE", "ADMARE"]:
+        layers.append(
+            (
+                prio(obj, 11),
+                {
+                    "id": f"{obj}-outline",
+                    "type": "line",
+                    "source": source,
+                    "source-layer": source_layer,
+                    "filter": ["==", ["get", "OBJL"], obj],
+                    "paint": {
+                        "line-color": get_colour(colors, "CHBLK"),
+                        "line-width": 1,
+                    },
+                    "metadata": {"maplibre:s52": f"{obj}-CHBLK"},
+                },
+            )
+        )
+
     # UDW hazards -----------------------------------------------------------
     layers.append(
         (
@@ -296,6 +424,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--glyphs", required=True, help="Glyphs URL template")
     p.add_argument("--safety-contour", type=float, default=0.0)
     p.add_argument("--sprite-prefix", default="", help="Prefix for sprite names")
+    p.add_argument("--emit-name", help="Override style.name in output")
     p.add_argument(
         "--palette",
         choices=["day", "dusk", "night"],
@@ -313,19 +442,34 @@ def _fail(msg: str) -> None:
 
 def main() -> None:  # pragma: no cover - CLI wrapper
     args = parse_args()
+    if not args.chartsymbols.exists():
+        _fail(
+            "chartsymbols.xml missing. Run 'python VDR/server-styling/"
+            "sync_opencpn_assets.py --lock VDR/server-styling/opencpn-assets.lock "
+            "--dest VDR/server-styling/dist/assets/s52 --force'"
+        )
     root = ET.parse(args.chartsymbols).getroot()
     palette_map = {"day": "DAY_BRIGHT", "dusk": "DUSK", "night": "NIGHT"}
     colors = parse_palette_colors(root, palette_map[args.palette])
     lookups = parse_lookups(root)
     priorities = _lookup_priorities(lookups)
+    symbols = parse_symbols(root)
+    linestyles = parse_linestyles(root)
 
     layers = build_layers(
-        colors, args.safety_contour, args.source_name, args.source_layer, priorities
+        colors,
+        args.safety_contour,
+        args.source_name,
+        args.source_layer,
+        priorities,
+        symbols,
+        linestyles,
     )
 
     style = {
         "version": 8,
-        "name": f"OpenCPN S-52 {args.palette.capitalize()}",
+        "name": args.emit_name
+        or f"OpenCPN S-52 {args.palette.capitalize()}",
         "sprite": args.sprite_base,
         "glyphs": args.glyphs,
         "sources": {
