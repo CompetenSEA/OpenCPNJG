@@ -19,6 +19,7 @@ jobs:
       - name: Install deps
         run: |
           python -m pip install --upgrade pip
+          npm install --no-save @maplibre/maplibre-gl-style-spec
       - name: Sync assets
         run: |
           python VDR/server-styling/sync_opencpn_assets.py \
@@ -29,24 +30,21 @@ jobs:
           python VDR/server-styling/generate_sprite_json.py \
             --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml \
             --output VDR/server-styling/dist/sprites/s52-day.json
-      - name: Build style
+      - name: Build styles
         run: |
-          python VDR/server-styling/build_style_json.py \
+          python VDR/server-styling/tools/build_all_styles.py \
             --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml \
             --tiles-url "/tiles/cm93/{z}/{x}/{y}?fmt=mvt&sc={sc}" \
             --source-name cm93 \
             --source-layer features \
             --sprite-base "/sprites/s52-day" \
+            --sprite-prefix "s52-" \
             --glyphs "/glyphs/{fontstack}/{range}.pbf" \
-            --safety-contour 10 \
-            --output VDR/server-styling/dist/style.s52.day.json
-      - name: Validate style
-        run: |
-          npm install --no-save @maplibre/maplibre-gl-style-spec
-          node VDR/server-styling/tools/validate_style.mjs VDR/server-styling/dist/style.s52.day.json
+            --safety-contour 10
       - name: Coverage summary
         run: |
-          python VDR/server-styling/s52_coverage.py --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml
+          python VDR/server-styling/s52_coverage.py \
+            --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml
       - name: Docs freshness
         run: |
           python VDR/server-styling/tools/update_docs_from_coverage.py \

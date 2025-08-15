@@ -20,13 +20,31 @@ def render(coverage_path: Path, symbols_path: Path, limit: int = 20) -> str:
         f"| total lookups | {total} |",
         f"| covered by style | {covered} |",
         f"| missing | {len(missing)} |",
-        "",
-        "### Missing OBJL",
-        missing_block,
-        "",
-        "### Symbols seen",
-        symbols_block,
     ]
+    prev_path = coverage_path.with_name("style_coverage.prev.json")
+    if prev_path.exists():
+        prev = json.loads(prev_path.read_text())
+        prev_missing = set(prev.get("missingObjL", []))
+        newly = sorted(prev_missing - set(missing))
+        delta = covered - prev.get("coveredByStyle", 0)
+        lines.extend(
+            [
+                "",
+                "### Delta",
+                f"covered change: {delta:+d}",
+                *(f"- {n}" for n in newly[:limit]),
+            ]
+        )
+    lines.extend(
+        [
+            "",
+            "### Missing OBJL",
+            missing_block,
+            "",
+            "### Symbols seen",
+            symbols_block,
+        ]
+    )
     return "\n".join(lines)
 
 

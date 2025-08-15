@@ -1,4 +1,9 @@
-# Generated OpenCPN S-52 assets
-opencpn-assets/
-style.s52.day.json
-sprites/
+# Generated assets and binary artefacts
+dist/assets/s52/
+dist/sprites/*.png
+dist/*.png
+dist/*.PNG
+dist/*.rle
+dist/*.RLE
+dist/*.csv
+dist/*.CSV

@@ -92,7 +92,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
         src_base = args.local_src
         if not src_base.exists():
             raise FileNotFoundError(f"Local source '{src_base}' not found")
-        manifest = _copy_required(src_base, args.dest)
+        try:
+            manifest = _copy_required(src_base, args.dest)
+        except FileNotFoundError as e:
+            print(f"Error: {e}", flush=True)
+            raise SystemExit(
+                "chartsymbols.xml missing. Run 'python VDR/server-styling/"
+                "sync_opencpn_assets.py --lock VDR/server-styling/opencpn-assets.lock "
+                "--dest VDR/server-styling/dist/assets/s52 --force'"
+            )
     else:
         lock = _parse_lock(args.lock)
         repo = lock["repo"]
@@ -122,7 +130,15 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             if not src_base.exists():
                 raise FileNotFoundError(f"Path '{repo_path}' not found in repo")
 
-            manifest = _copy_required(src_base, args.dest)
+            try:
+                manifest = _copy_required(src_base, args.dest)
+            except FileNotFoundError as e:
+                print(f"Error: {e}", flush=True)
+                raise SystemExit(
+                    "chartsymbols.xml missing. Run 'python VDR/server-styling/"
+                    "sync_opencpn_assets.py --lock VDR/server-styling/opencpn-assets.lock "
+                    "--dest VDR/server-styling/dist/assets/s52 --force'"
+                )
 
     manifest_path = args.dest / "assets.manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
