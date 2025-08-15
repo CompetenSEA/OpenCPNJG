@@ -1,31 +1,37 @@
-#!/usr/bin/env python3
-"""Fetch S-52 assets from the OpenCPN repository at a pinned commit.
+"""Synchronise OpenCPN S-52 assets.
 
-The repository/commit/path are read from ``opencpn-assets.lock``.  Only the
-required files are copied into ``opencpn-assets/`` and their size and sha256
-checksums are verified after copy.
+The script uses a simple lock file to pin the upstream OpenCPN repository
+commit containing the S-52 data files.  Only a minimal set of text assets are
+copied into the destination directory and a manifest of their sizes and SHA256
+hashes is produced.  Binary artefacts (PNG/RLE/CSV) are intentionally not
+committed to version control; they are downloaded at build time.
 """
+
 from __future__ import annotations
 
+import argparse
 import hashlib
+import json
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
-LOCK_FILE = Path(__file__).with_name("opencpn-assets.lock")
-TARGET_DIR = Path(__file__).with_name("opencpn-assets")
-
 REQUIRED_FILES = {
     "chartsymbols.xml",
     "rastersymbols-day.png",
     "S52RAZDS.RLE",
+    "s57objectclasses.csv",
+    "s57attributes.csv",
+    "attdecode.csv",
 }
 
 
-def _parse_lock() -> dict[str, str]:
+def _parse_lock(lock_path: Path) -> dict[str, str]:
+    """Read ``repo``, ``path`` and ``commit`` keys from a lock file."""
+
     data: dict[str, str] = {}
-    for line in LOCK_FILE.read_text().splitlines():
+    for line in lock_path.read_text().splitlines():
         if not line.strip():
             continue
         key, _, value = line.partition("=")
@@ -44,42 +50,72 @@ def _sha256(path: Path) -> str:
     return h.hexdigest()
 
 
-def main() -> None:
-    lock = _parse_lock()
+def _copy_required(src_dir: Path, dest_dir: Path) -> dict[str, dict[str, int | str]]:
+    """Copy required files from ``src_dir`` to ``dest_dir`` and build a manifest."""
+
+    manifest: dict[str, dict[str, int | str]] = {}
+    for name in sorted(REQUIRED_FILES):
+        src = src_dir / name
+        if not src.exists():
+            raise FileNotFoundError(f"Required asset '{name}' missing in upstream repo")
+        dst = dest_dir / name
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        manifest[name] = {"size": dst.stat().st_size, "sha256": _sha256(dst)}
+    return manifest
+
+
+def main() -> None:  # pragma: no cover - thin CLI wrapper
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--lock", type=Path, required=True, help="Path to lock file")
+    parser.add_argument(
+        "--dest", type=Path, required=True, help="Destination directory for assets"
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Overwrite destination if it exists"
+    )
+    args = parser.parse_args()
+
+    if args.dest.exists() and not args.force:
+        raise SystemExit(f"Destination {args.dest} exists; use --force to overwrite")
+
+    lock = _parse_lock(args.lock)
     repo = lock["repo"]
     repo_path = lock["path"].strip("/")
     commit = lock["commit"]
 
-    TARGET_DIR.mkdir(parents=True, exist_ok=True)
+    args.dest.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
-        # Fetch only the required commit depth-one
-        subprocess.run(["git", "init", tmpdir], check=True)
-        subprocess.run(["git", "-C", tmpdir, "remote", "add", "origin", repo], check=True)
-        subprocess.run(["git", "-C", tmpdir, "fetch", "--depth", "1", "origin", commit], check=True)
-        subprocess.run(["git", "-C", tmpdir, "checkout", commit], check=True)
+        subprocess.run(["git", "init", tmpdir], check=True, stdout=subprocess.DEVNULL)
+        subprocess.run(
+            ["git", "-C", tmpdir, "remote", "add", "origin", repo],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            ["git", "-C", tmpdir, "fetch", "--depth", "1", "origin", commit],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
+        subprocess.run(
+            ["git", "-C", tmpdir, "checkout", commit],
+            check=True,
+            stdout=subprocess.DEVNULL,
+        )
 
         src_base = tmp / repo_path
         if not src_base.exists():
             raise FileNotFoundError(f"Path '{repo_path}' not found in repo")
 
-        files = set(REQUIRED_FILES)
-        files.update(p.name for p in src_base.glob("*.csv"))
+        manifest = _copy_required(src_base, args.dest)
 
-        for name in sorted(files):
-            src = src_base / name
-            if not src.exists():
-                raise FileNotFoundError(f"Required asset '{name}' missing in upstream repo")
-            dst = TARGET_DIR / name
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(src, dst)
-            if src.stat().st_size != dst.stat().st_size:
-                raise RuntimeError(f"Size mismatch for '{name}'")
-            if _sha256(src) != _sha256(dst):
-                raise RuntimeError(f"Hash mismatch for '{name}'")
-            print(f"Fetched {name} ({dst.stat().st_size} bytes)")
+    manifest_path = args.dest / "assets.manifest.json"
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
+    print(f"Wrote manifest with {len(manifest)} entries to {manifest_path}")
 
 
 if __name__ == "__main__":
     main()
+

@@ -1,10 +1,11 @@
-#!/usr/bin/env python3
-"""Generate a MapLibre sprite manifest from ``chartsymbols.xml``.
+"""Generate a MapLibre sprite JSON manifest from ``chartsymbols.xml``.
 
-The manifest describes the location and dimensions of each symbol within the
-atlas PNG used by MapLibre.  No image manipulation is performed; the original
-PNG from OpenCPN is used directly.
+OpenCPN distributes a large raster atlas (``rastersymbols-day.png``) and an XML
+file describing the position of each symbol within that atlas.  This helper
+script converts the relevant parts into the JSON format expected by MapLibre.
+No image manipulation is performed – the PNG itself is served separately.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -19,39 +20,54 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output", type=Path, required=True, help="Path to write sprite JSON manifest"
     )
+    parser.add_argument(
+        "--include",
+        nargs="*",
+        help="Optional list of symbol names to include; defaults to all",
+    )
     return parser.parse_args()
 
 
-def main() -> None:
+def main() -> None:  # pragma: no cover - CLI wrapper
     args = parse_args()
     tree = ET.parse(args.chartsymbols)
     root = tree.getroot()
 
-    sprites: dict[str, dict[str, int]] = {}
+    wanted = set(args.include or [])
 
+    sprites: dict[str, dict[str, int | bool]] = {}
     for symbol in root.findall(".//symbols/symbol"):
-        name_elem = symbol.find("name")
+        # Symbol name may be stored as an attribute or child element
+        name = symbol.get("name") or symbol.get("id")
+        if not name:
+            name_elem = symbol.find("name")
+            if name_elem is not None:
+                name = name_elem.text or ""
+        if not name or (wanted and name not in wanted):
+            continue
+
         bitmap = symbol.find("bitmap")
-        if name_elem is None or bitmap is None:
+        if bitmap is None:
             continue
+
+        # Graphics location may be a child element or attributes on <bitmap>
         gl = bitmap.find("graphics-location")
-        if gl is None:
-            continue
+        x = gl.get("x") if gl is not None else bitmap.get("x")
+        y = gl.get("y") if gl is not None else bitmap.get("y")
+
         try:
-            name = name_elem.text or ""
-            x = int(gl.get("x", "0"))
-            y = int(gl.get("y", "0"))
-            w = int(bitmap.get("width", "0"))
-            h = int(bitmap.get("height", "0"))
+            entry = {
+                "x": int(x or 0),
+                "y": int(y or 0),
+                "width": int(bitmap.get("width", "0")),
+                "height": int(bitmap.get("height", "0")),
+                "pixelRatio": 1,
+                "sdf": False,
+            }
         except ValueError:
             continue
-        sprites[name] = {
-            "x": x,
-            "y": y,
-            "width": w,
-            "height": h,
-            "pixelRatio": 1,
-        }
+
+        sprites[name] = entry  # last definition wins
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as f:
@@ -61,3 +77,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

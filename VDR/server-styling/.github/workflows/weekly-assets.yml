@@ -1,0 +1,34 @@
+name: weekly-assets
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Check for upstream update
+        id: probe
+        run: |
+          COMMIT=$(grep '^commit=' VDR/server-styling/opencpn-assets.lock | cut -d= -f2)
+          UPSTREAM=$(git ls-remote https://github.com/OpenCPN/OpenCPN HEAD | awk '{print $1}')
+          echo "current=$COMMIT" >> $GITHUB_OUTPUT
+          echo "upstream=$UPSTREAM" >> $GITHUB_OUTPUT
+          if [ "$COMMIT" = "$UPSTREAM" ]; then
+            echo "unchanged=true" >> $GITHUB_OUTPUT
+          fi
+      - uses: peter-evans/create-pull-request@v5
+        if: steps.probe.outputs.unchanged != 'true'
+        with:
+          commit-message: 'chore: update OpenCPN assets lock'
+          title: 'chore: update OpenCPN assets lock'
+          branch: update-opencpn-assets
+          base: main
+          add-paths: VDR/server-styling/opencpn-assets.lock
+          body: |
+            Automated weekly update of ``opencpn-assets.lock``.
+          author: github-actions <github-actions@users.noreply.github.com>
+          committer: github-actions <github-actions@users.noreply.github.com>
+
