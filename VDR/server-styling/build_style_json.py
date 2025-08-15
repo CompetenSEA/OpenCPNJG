@@ -2,8 +2,7 @@
 
 The implementation intentionally focuses on a very small subset of S‑57 objects
 required for the vector‑first prototype.  Colours and ordering are derived from
-``chartsymbols.xml`` which is shipped with OpenCPN.  Only the *Day* palette is
-handled.
+``chartsymbols.xml`` which is shipped with OpenCPN.  Supports multiple palettes.
 """
 
 from __future__ import annotations
@@ -16,7 +15,7 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List
 
-from s52_xml import parse_day_colors, parse_lookups
+from s52_xml import parse_palette_colors, parse_lookups
 
 
 def _lookup_priorities(lookups: List[Dict[str, str]]) -> Dict[str, int]:
@@ -49,7 +48,7 @@ def build_layers(
     source_layer: str,
     priorities: Dict[str, int],
 ) -> List[Dict[str, object]]:
-    """Construct and order Tier‑1 style layers for the Day palette."""
+    """Construct and order Tier‑1 style layers for the chosen palette."""
 
     layers: List[tuple[int, Dict[str, object]]] = []
 
@@ -297,6 +296,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--glyphs", required=True, help="Glyphs URL template")
     p.add_argument("--safety-contour", type=float, default=0.0)
     p.add_argument("--sprite-prefix", default="", help="Prefix for sprite names")
+    p.add_argument(
+        "--palette",
+        choices=["day", "dusk", "night"],
+        default="day",
+        help="Colour palette to use",
+    )
     p.add_argument("--output", type=Path, required=True)
     return p.parse_args()
 
@@ -309,7 +314,8 @@ def _fail(msg: str) -> None:
 def main() -> None:  # pragma: no cover - CLI wrapper
     args = parse_args()
     root = ET.parse(args.chartsymbols).getroot()
-    colors = parse_day_colors(root)
+    palette_map = {"day": "DAY_BRIGHT", "dusk": "DUSK", "night": "NIGHT"}
+    colors = parse_palette_colors(root, palette_map[args.palette])
     lookups = parse_lookups(root)
     priorities = _lookup_priorities(lookups)
 
@@ -319,7 +325,7 @@ def main() -> None:  # pragma: no cover - CLI wrapper
 
     style = {
         "version": 8,
-        "name": "OpenCPN S-52 Day",
+        "name": f"OpenCPN S-52 {args.palette.capitalize()}",
         "sprite": args.sprite_base,
         "glyphs": args.glyphs,
         "sources": {

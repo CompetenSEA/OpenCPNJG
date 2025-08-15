@@ -17,17 +17,17 @@ def _int(value: str | None) -> int | None:
         return None
 
 
-def parse_day_colors(root: Element) -> Dict[str, str]:
-    """Return mapping of colour token -> ``#RRGGBB`` for the Day palette."""
+def parse_palette_colors(root: Element, name: str) -> Dict[str, str]:
+    """Return mapping of colour token -> ``#RRGGBB`` for the given palette."""
 
     table = None
     for tbl in root.findall(".//color-table"):
-        name = (tbl.get("name") or tbl.get("id") or "").upper()
-        if name in {"DAY_BRIGHT", "DAY"}:
+        tbl_name = (tbl.get("name") or tbl.get("id") or "").upper()
+        if tbl_name == name.upper():
             table = tbl
             break
     if table is None:
-        raise ValueError("DAY_BRIGHT colour table not found")
+        raise ValueError(f"{name} colour table not found")
 
     colours: Dict[str, str] = {}
     for elem in table.findall("color"):
@@ -41,6 +41,12 @@ def parse_day_colors(root: Element) -> Dict[str, str]:
             except ValueError:
                 continue
     return colours
+
+
+def parse_day_colors(root: Element) -> Dict[str, str]:
+    """Return mapping of colour token -> ``#RRGGBB`` for the Day palette."""
+
+    return parse_palette_colors(root, "DAY_BRIGHT")
 
 
 def parse_symbols(root: Element) -> Dict[str, Dict[str, Any]]:
@@ -160,6 +166,7 @@ def parse_lookups(root: Element) -> List[Dict[str, Any]]:
 
 
 __all__ = [
+    "parse_palette_colors",
     "parse_day_colors",
     "parse_symbols",
     "parse_linestyles",
