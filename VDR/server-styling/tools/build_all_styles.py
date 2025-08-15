@@ -32,6 +32,7 @@ def main() -> int:  # pragma: no cover - CLI helper
     for pal in palettes:
         out = ROOT / "dist" / f"style.s52.{pal}.json"
         sprite_base = args.sprite_base.replace("day", pal)
+        emit_name = args.emit_name.format(palette=pal) if args.emit_name else None
         cmd = [
             sys.executable,
             str(BUILD),
@@ -51,7 +52,7 @@ def main() -> int:  # pragma: no cover - CLI helper
             str(args.safety_contour),
             "--sprite-prefix",
             args.sprite_prefix,
-            *( ["--emit-name", args.emit_name] if args.emit_name else [] ),
+            *( ["--emit-name", emit_name] if emit_name else [] ),
             "--palette",
             pal,
             "--output",
