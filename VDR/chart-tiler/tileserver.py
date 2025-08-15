@@ -12,6 +12,7 @@ import base64
 import logging
 import math
 import os
+import sys
 import time
 import xml.etree.ElementTree as ET
 from functools import lru_cache
@@ -30,6 +31,10 @@ except Exception:  # pragma: no cover
 from datasource_stub import features_for_tile
 from mvt_builder import encode_mvt
 from s52_preclass import S52PreClassifier
+
+# Allow importing parsing helpers
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server-styling"))
+from s52_xml import parse_day_colors, parse_symbols
 
 
 app = FastAPI()
@@ -55,25 +60,6 @@ def _cache_key(fmt: str, sc: float, z: int, x: int, y: int) -> str:
     return f"{fmt}:{sc}:{z}/{x}/{y}"
 
 
-def _parse_day_colors(path: Path) -> Dict[str, str]:
-    tree = ET.parse(path)
-    root = tree.getroot()
-    table = root.find(".//color-table[@name='DAY_BRIGHT']")
-    colours: Dict[str, str] = {}
-    if table is not None:
-        for elem in table.findall("color"):
-            name = elem.get("name")
-            r = elem.get("r")
-            g = elem.get("g")
-            b = elem.get("b")
-            if name and r and g and b:
-                try:
-                    colours[name] = f"#{int(r):02x}{int(g):02x}{int(b):02x}"
-                except ValueError:
-                    continue
-    return colours
-
-
 def _tile_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
     n = 2.0 ** z
     lon_left = x / n * 360.0 - 180.0
@@ -86,12 +72,14 @@ def _tile_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
 
 
 _chartsymbols_path = STYLING_DIST / "assets" / "s52" / "chartsymbols.xml"
-_day_colors = _parse_day_colors(_chartsymbols_path)
+_root = ET.parse(_chartsymbols_path).getroot()
+_day_colors = parse_day_colors(_root)
+_symbols = parse_symbols(_root)
 
 
 @lru_cache(maxsize=32)
 def _get_classifier(sc: float) -> S52PreClassifier:
-    return S52PreClassifier(str(_chartsymbols_path), sc, _day_colors)
+    return S52PreClassifier(sc, _day_colors, _symbols)
 
 
 @lru_cache(maxsize=512)

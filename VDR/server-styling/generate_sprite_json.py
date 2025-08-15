@@ -13,6 +13,8 @@ import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from s52_xml import parse_symbols
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -25,49 +27,30 @@ def parse_args() -> argparse.Namespace:
         nargs="*",
         help="Optional list of symbol names to include; defaults to all",
     )
+    parser.add_argument("--prefix", default="", help="Optional name prefix")
     return parser.parse_args()
 
 
 def main() -> None:  # pragma: no cover - CLI wrapper
     args = parse_args()
-    tree = ET.parse(args.chartsymbols)
-    root = tree.getroot()
-
+    root = ET.parse(args.chartsymbols).getroot()
     wanted = set(args.include or [])
 
     sprites: dict[str, dict[str, int | bool]] = {}
-    for symbol in root.findall(".//symbols/symbol"):
-        # Symbol name may be stored as an attribute or child element
-        name = symbol.get("name") or symbol.get("id")
-        if not name:
-            name_elem = symbol.find("name")
-            if name_elem is not None:
-                name = name_elem.text or ""
-        if not name or (wanted and name not in wanted):
+    for name, info in parse_symbols(root).items():
+        if wanted and name not in wanted:
             continue
-
-        bitmap = symbol.find("bitmap")
-        if bitmap is None:
+        if not {"x", "y", "w", "h"} <= info.keys():
             continue
-
-        # Graphics location may be a child element or attributes on <bitmap>
-        gl = bitmap.find("graphics-location")
-        x = gl.get("x") if gl is not None else bitmap.get("x")
-        y = gl.get("y") if gl is not None else bitmap.get("y")
-
-        try:
-            entry = {
-                "x": int(x or 0),
-                "y": int(y or 0),
-                "width": int(bitmap.get("width", "0")),
-                "height": int(bitmap.get("height", "0")),
-                "pixelRatio": 1,
-                "sdf": False,
-            }
-        except ValueError:
-            continue
-
-        sprites[name] = entry  # last definition wins
+        key = f"{args.prefix}{name}"
+        sprites[key] = {
+            "x": int(info["x"]),
+            "y": int(info["y"]),
+            "width": int(info["w"]),
+            "height": int(info["h"]),
+            "pixelRatio": 1,
+            "sdf": False,
+        }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with args.output.open("w", encoding="utf-8") as f:

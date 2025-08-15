@@ -2,16 +2,21 @@ from __future__ import annotations
 
 """Minimal S-52 Day palette pre-classification."""
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class S52PreClassifier:
     """Apply a very small subset of S-52 conditional symbology rules."""
 
-    def __init__(self, chartsymbols_xml: str, sc: float, colors: Dict[str, str]):
+    def __init__(
+        self,
+        sc: float,
+        colors: Dict[str, str],
+        symbols: Optional[Dict[str, Dict[str, Any]]] = None,
+    ):
         self.sc = float(sc)
         self.colors = colors
-        self.chartsymbols_xml = chartsymbols_xml
+        self.symbols = symbols or {}
         # Hooks for future use: lookups, priorities, etc.
 
     def classify(self, objl: str, props: Dict[str, Any]) -> Dict[str, Any]:
@@ -40,5 +45,30 @@ class S52PreClassifier:
             is_shallow = isinstance(valsou, (int, float)) and valsou < self.sc
             return {"isShallow": is_shallow}
 
+        if objl in {"OBSTRN", "WRECKS", "UWTROC", "ROCKS"}:
+            icon = self._hazard_icon(objl, props)
+            if icon and (not self.symbols or icon in self.symbols):
+                return {"hazardIcon": icon}
+            return {}
+
         # LNDARE/COALNE and other objects use static styling
         return {}
+
+    # ------------------------------------------------------------------
+    def _hazard_icon(self, objl: str, props: Dict[str, Any]) -> Optional[str]:
+        valsou = props.get("VALSOU")
+        watlev = props.get("WATLEV")
+        try:
+            watlev_int = int(watlev)
+        except (TypeError, ValueError):
+            watlev_int = None
+        shallow = isinstance(valsou, (int, float)) and valsou < self.sc
+        drying = watlev_int in {1, 2}
+        dangerous = shallow or drying
+        if not dangerous:
+            return None
+        if objl == "WRECKS" and shallow:
+            return "DANGER51"
+        if objl == "ROCKS" and not drying:
+            return "ROCKS01"
+        return "ISODGR51"

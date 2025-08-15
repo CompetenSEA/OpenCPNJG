@@ -43,6 +43,9 @@ jobs:
       - name: Validate style
         run: |
           npx @maplibre/maplibre-gl-style-spec@latest validate VDR/server-styling/dist/style.s52.day.json
+      - name: Coverage summary
+        run: |
+          python VDR/server-styling/s52_coverage.py --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
