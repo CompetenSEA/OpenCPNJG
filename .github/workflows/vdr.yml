@@ -1,0 +1,34 @@
+name: VDR CI
+
+on:
+  push:
+    paths:
+      - 'VDR/**'
+  pull_request:
+    paths:
+      - 'VDR/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++
+          pip install pybind11 pytest
+      - name: Build libcharts
+        run: |
+          cmake -S VDR/opencpn-libs -B VDR/opencpn-libs/build
+          cmake --build VDR/opencpn-libs/build
+      - name: Build charts_py
+        run: |
+          cd VDR/chart-tiler/charts_py
+          python setup.py build_ext --inplace
+      - name: Run tests
+        run: |
+          pytest VDR/chart-tiler/tests/test_generate_tile.py
