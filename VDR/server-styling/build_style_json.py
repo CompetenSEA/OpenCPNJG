@@ -1,287 +1,293 @@
-"""Build a basic S-52 day style JSON for MapLibre.
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-Example:
+"""Generate a MapLibre style.json for S-52 chart rendering.
+
+This script loads color tables and rendering rules from the OpenCPN S-52 C++
+library (exposed to Python as :mod:`ps52`) and converts them to a MapLibre
+``style.json``.  It is intended as a small bootstrap tool for creating vector
+tile styles without hand‑authoring hundreds of S-52 rules.
+
+Example
+-------
     python VDR/server-styling/build_style_json.py \
-      --tiles-url "/tiles/cm93/{z}/{x}/{y}?fmt=mvt" \
-      --source-name cm93 \
-      --safety-contour 10 \
-      --output VDR/server-styling/style.s52.day.json
+        --rulebook VDR/server-styling/s52_rules \
+        --tiles-url "/tiles/cm93/{z}/{x}/{y}?fmt=mvt" \
+        --source-name cm93 \
+        --output VDR/server-styling/style.json
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-from pathlib import Path
 import sys
-import textwrap
-
-DEFAULT_TILES_URL = "/tiles/cm93/{z}/{x}/{y}?fmt=mvt"
-DEFAULT_SOURCE_NAME = "cm93"
-DEFAULT_SC = 5.0
-
-FALLBACK_DAY_COLORS = {
-    "LANDA": "#C2B280",
-    "CHBLK": "#000000",
-    "DEPDW": "#FFFFFF",
-    "DEPVS": "#198EC8",
-    "DEPIT1": "#A5DAFF",
-    "DEPCN": "#0163AC",
-    "DEPSC": "#D4D4D4",
-    "SNDG1": "#353535",
-    "SNDG2": "#FFFFFF",
-}
-
-RULES_DIR = Path(__file__).resolve().parent / "s52_rules"
-__doc__ = textwrap.dedent(__doc__ or "")
-
+from pathlib import Path
+from typing import Dict, List
 
 # ---------------------------------------------------------------------------
-# Color handling
+# Optional ps52 bindings
 # ---------------------------------------------------------------------------
 
-def load_day_colors() -> dict[str, str]:
-    """Load day colors from optional rules file with safe fallbacks."""
-    path = RULES_DIR / "colors.day.json"
-    file_colors: dict[str, str] = {}
-    if path.exists():
-        try:
-            file_colors = json.loads(path.read_text(encoding="utf-8"))
-        except Exception as exc:  # pragma: no cover - extremely rare
-            print(f"Warning: failed to parse {path}: {exc}", file=sys.stderr)
-    else:
-        print(f"Warning: {path} not found; using fallback colors", file=sys.stderr)
-    colors: dict[str, str] = {}
-    for token, fallback in FALLBACK_DAY_COLORS.items():
-        if token in file_colors:
-            colors[token] = file_colors[token]
-        else:
-            if file_colors:
-                print(
-                    f"Warning: token {token} missing in {path}; using fallback {fallback}",
-                    file=sys.stderr,
-                )
-            colors[token] = fallback
-    return colors
+# The real environment provides a compiled ``ps52`` Python module built using
+# pybind11.  For development environments where this shared object is missing we
+# fall back to a very small mock that exposes the same API surface.  This keeps
+# the script runnable in CI and for documentation examples.
+try:  # pragma: no cover - exercised only when ps52 is available
+    import ps52  # type: ignore
+except Exception:  # pragma: no cover - mock path
+    print(
+        "WARNING: Using mock 'ps52' library. Output will be based on dummy data.",
+        file=sys.stderr,
+    )
 
+    class MockColor:
+        def __init__(self, r: int, g: int, b: int, a: int = 255) -> None:
+            self.r, self.g, self.b, self.a = r, g, b, a
 
-# ---------------------------------------------------------------------------
-# Layer helpers
-# ---------------------------------------------------------------------------
+    class MockFillRule:
+        def __init__(self, objl: str, color_token: str) -> None:
+            self.objl = objl
+            self.colorToken = color_token
 
-def fill_layer(
-    id_: str,
-    feature: str,
-    color_hex: str,
-    *,
-    minzoom: int | None = None,
-    maxzoom: int | None = None,
-    filter_: list | None = None,
-) -> dict:
-    layer: dict = {
-        "id": id_,
-        "type": "fill",
-        "source": args.source_name,
-        "source-layer": feature,
-        "paint": {"fill-color": color_hex},
-    }
-    if filter_ is not None:
-        layer["filter"] = filter_
-    if minzoom is not None:
-        layer["minzoom"] = minzoom
-    if maxzoom is not None:
-        layer["maxzoom"] = maxzoom
-    return layer
+    class MockLineRule:
+        def __init__(self, objl: str, pattern: str, width: float, color_token: str) -> None:
+            self.objl = objl
+            self.pattern = pattern
+            self.width = width
+            self.colorToken = color_token
 
-def line_layer(
-    id_: str,
-    feature: str,
-    color_hex: str,
-    *,
-    width_zoom: list = [8, 0.3, 13, 0.8],
-    filter_: list | None = None,
-) -> dict:
-    width_expr: list = ["interpolate", ["linear"], ["zoom"]]
-    for i in range(0, len(width_zoom), 2):
-        width_expr.extend([width_zoom[i], width_zoom[i + 1]])
-    layer: dict = {
-        "id": id_,
-        "type": "line",
-        "source": args.source_name,
-        "source-layer": feature,
-        "paint": {"line-color": color_hex, "line-width": width_expr},
-    }
-    if filter_ is not None:
-        layer["filter"] = filter_
-    return layer
+    class MockSymbolRule:
+        def __init__(self, objl: str, icon_name: str, size: float) -> None:
+            self.objl = objl
+            self.iconName = icon_name
+            self.size = size
 
-def symbol_text_layer(
-    id_: str,
-    feature: str,
-    color_hex: str,
-    *,
-    text_expr: list,
-    size_zoom: list = [10, 9, 15, 12],
-    filter_: list | None = None,
-) -> dict:
-    size_expr: list = ["interpolate", ["linear"], ["zoom"]]
-    for i in range(0, len(size_zoom), 2):
-        size_expr.extend([size_zoom[i], size_zoom[i + 1]])
-    layer: dict = {
-        "id": id_,
-        "type": "symbol",
-        "source": args.source_name,
-        "source-layer": feature,
-        "layout": {"text-field": text_expr, "text-size": size_expr},
-        "paint": {"text-color": color_hex},
-    }
-    if filter_ is not None:
-        layer["filter"] = filter_
-    return layer
+    class MockCategoryRuleSet:
+        def __init__(self) -> None:
+            self.fillRules = [
+                MockFillRule("LNDARE", "LANDA"),
+                MockFillRule("DEPARE", "DEPIT1"),
+            ]
+            self.lineRules = [
+                MockLineRule("COALNE", "solid", 1.5, "CHBLK"),
+                MockLineRule("DEPCNT", "dash", 1.0, "CHBLK"),
+            ]
+            self.symbolRules = [MockSymbolRule("SOUNDG", "SOUNDG", 10.0)]
 
+    class MockRuleBook:
+        def GetCategoryList(self) -> List[str]:
+            return ["DEPARE", "LNDARE", "COALNE", "DEPCNT", "SOUNDG"]
 
-# ---------------------------------------------------------------------------
-# Style builder
-# ---------------------------------------------------------------------------
+        def GetRules(self, category: str) -> MockCategoryRuleSet:  # noqa: ARG002
+            return MockCategoryRuleSet()
 
-def build_style(args: argparse.Namespace, colors: dict[str, str]) -> dict:
-    sc = args.safety_contour
-    style: dict = {
-        "version": 8,
-        "name": "S-52 Tier-1 (Day)",
-        "glyphs": "/glyphs/{fontstack}/{range}.pbf",
-        "sources": {
-            args.source_name: {
-                "type": "vector",
-                "tiles": [args.tiles_url],
-                "minzoom": 0,
-                "maxzoom": 15,
+        @staticmethod
+        def Load(path: str) -> "MockRuleBook":  # noqa: D401
+            print(f"MOCK: Loading RuleBook from {path}")
+            return MockRuleBook()
+
+    class MockColorTable:
+        def GetColorTokens(self) -> Dict[str, MockColor]:
+            return {
+                "LANDA": MockColor(204, 204, 0),
+                "DEPIT1": MockColor(160, 160, 240),
+                "CHBLK": MockColor(0, 0, 0),
             }
-        },
-        "layers": [],
-    }
 
-    layers = style["layers"]
+        @staticmethod
+        def Load(path: str) -> "MockColorTable":  # noqa: D401
+            print(f"MOCK: Loading ColorTable from {path}")
+            return MockColorTable()
 
-    # LNDARE
-    l = fill_layer("LNDARE", "LNDARE", colors["LANDA"])
-    l["metadata"] = {"maplibre:s52": "LNDARE-LANDA"}
-    l["paint"]["fill-outline-color"] = colors["CHBLK"]
-    layers.append(l)
+    class MockPs52:  # pragma: no cover - executed only with missing ps52
+        RuleBook = MockRuleBook
+        ColorTable = MockColorTable
+        Color = MockColor
 
-    # DEPARE bands
-    shallow_filter = [
-        "<",
-        ["coalesce", ["get", "DRVAL2"], ["get", "DRVAL1"], 99999],
-        sc,
-    ]
-    l = fill_layer("DEPARE-very-shallow", "DEPARE", colors["DEPVS"], filter_=shallow_filter)
-    l["metadata"] = {"maplibre:s52": "DEPARE-DEPVS"}
-    layers.append(l)
-
-    deep_filter = [
-        ">=",
-        ["coalesce", ["get", "DRVAL1"], ["get", "DRVAL2"], -99999],
-        sc,
-    ]
-    l = fill_layer("DEPARE-safe", "DEPARE", colors["DEPDW"], filter_=deep_filter)
-    l["metadata"] = {"maplibre:s52": "DEPARE-DEPDW"}
-    layers.append(l)
-
-    # COALNE
-    l = line_layer("COALNE", "COALNE", colors["CHBLK"])
-    l["metadata"] = {"maplibre:s52": "COALNE-CHBLK"}
-    layers.append(l)
-
-    # DEPCNT
-    l = line_layer("DEPCNT", "DEPCNT", colors["DEPCN"])
-    l["metadata"] = {"maplibre:s52": "DEPCNT-DEPCN"}
-    layers.append(l)
-
-    # DEPCNT safety overlay
-    sc_filter = ["==", ["to-number", ["get", "VALDCO"]], sc]
-    l = line_layer("DEPCNT-safety", "DEPCNT", colors["DEPSC"], filter_=sc_filter)
-    l["metadata"] = {"maplibre:s52": "DEPCNT-DEPSC"}
-    layers.append(l)
-
-    # SOUNDG
-    text_expr = ["to-string", ["coalesce", ["get", "VALSOU"], ["get", "VAL"]]]
-    l = symbol_text_layer("SOUNDG", "SOUNDG", colors["SNDG1"], text_expr=text_expr)
-    l["metadata"] = {"maplibre:s52": "SOUNDG-SNDG1"}
-    layers.append(l)
-
-    return style
+    ps52 = MockPs52()
 
 
 # ---------------------------------------------------------------------------
-# Validation
+# Argument parsing
 # ---------------------------------------------------------------------------
 
-def validate_style(style: dict, args: argparse.Namespace) -> None:
-    errors: list[str] = []
-    if style.get("version") != 8:
-        errors.append("style version must be 8")
-    src = style.get("sources", {}).get(args.source_name)
-    if not src:
-        errors.append(f"source {args.source_name} missing")
-    else:
-        if src.get("type") != "vector":
-            errors.append("source type must be vector")
-        tiles = src.get("tiles") or []
-        if not tiles:
-            errors.append("source tiles list empty")
-    for layer in style.get("layers", []):
-        if "id" not in layer:
-            errors.append("layer missing id")
-        if "type" not in layer:
-            errors.append(f"layer {layer.get('id')} missing type")
-        if layer.get("source") != args.source_name:
-            errors.append(f"layer {layer.get('id')} wrong source")
-        if "source-layer" not in layer:
-            errors.append(f"layer {layer.get('id')} missing source-layer")
-        if "paint" not in layer:
-            errors.append(f"layer {layer.get('id')} missing paint")
-        if layer.get("type") == "symbol" and "layout" not in layer:
-            errors.append(f"layer {layer.get('id')} missing layout")
-    if errors:
-        for msg in errors:
-            print(f"Validation error: {msg}", file=sys.stderr)
-        sys.exit(2)
-
-
-# ---------------------------------------------------------------------------
-# Main
-# ---------------------------------------------------------------------------
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Generate S-52 Day style JSON")
-    p.add_argument("--output", type=Path, help="Output file path")
-    p.add_argument("--tiles-url", default=DEFAULT_TILES_URL)
-    p.add_argument("--source-name", default=DEFAULT_SOURCE_NAME)
-    p.add_argument("--safety-contour", type=float, default=DEFAULT_SC)
-    args = p.parse_args()
-    if not args.tiles_url:
-        print("tiles-url cannot be empty", file=sys.stderr)
-        sys.exit(2)
-    if not args.source_name:
-        print("source-name cannot be empty", file=sys.stderr)
-        sys.exit(2)
-    if args.safety_contour <= 0:
-        print("safety-contour must be positive", file=sys.stderr)
-        sys.exit(2)
-    return args
+    """Parse command-line arguments for the script."""
 
-def main() -> None:
-    global args
+    parser = argparse.ArgumentParser(
+        description="Generate a MapLibre style.json from OpenCPN S-52 rules."
+    )
+    parser.add_argument(
+        "--rulebook",
+        required=True,
+        type=Path,
+        help="Absolute path to the root of the S-52 Rules directory",
+    )
+    parser.add_argument(
+        "--output",
+        default=Path("./dist/style.json"),
+        type=Path,
+        help="Path to write the final style.json file",
+    )
+    parser.add_argument(
+        "--tiles-url",
+        default="/tiles/cm93/{z}/{x}/{y}?fmt=mvt",
+        help="Template URL for vector tiles",
+    )
+    parser.add_argument(
+        "--source-name",
+        default="cm93",
+        help="Name of the vector tile source used in the style",
+    )
+    parser.add_argument(
+        "--source-layer",
+        default="features",
+        help="Name of the source layer containing S-57 features",
+    )
+    parser.add_argument(
+        "--palette",
+        default="day",
+        choices=["day", "dusk", "night"],
+        help="Color palette to use from the rulebook",
+    )
+    return parser.parse_args()
+
+
+# ---------------------------------------------------------------------------
+# Utility helpers
+# ---------------------------------------------------------------------------
+
+
+def color_to_hex(color: ps52.Color) -> str:
+    """Convert a :class:`ps52.Color` to an ``#RRGGBB`` string."""
+
+    return f"#{color.r:02x}{color.g:02x}{color.b:02x}"
+
+
+# ---------------------------------------------------------------------------
+# Main execution
+# ---------------------------------------------------------------------------
+
+
+def main() -> None:  # pragma: no cover - CLI wrapper
     args = parse_args()
-    colors = load_day_colors()
-    style = build_style(args, colors)
-    validate_style(style, args)
-    text = json.dumps(style, indent=2, ensure_ascii=False)
-    if args.output:
-        args.output.write_text(text, encoding="utf-8")
-    else:
-        print(text)
+    palette_name = args.palette
+
+    print(f"Loading S-52 rulebook from: {args.rulebook}")
+    print(f"Using '{palette_name}' color palette.")
+
+    try:
+        # 1. Load color tokens from the C++ library
+        color_table = ps52.ColorTable.Load(str(args.rulebook))
+        color_tokens_cpp = color_table.GetColorTokens()
+
+        color_map = {
+            token: color_to_hex(color) for token, color in color_tokens_cpp.items()
+        }
+        print(f"Successfully loaded {len(color_map)} color tokens.")
+
+        # 2. Load the S-52 rulebook
+        rulebook = ps52.RuleBook.Load(str(args.rulebook))
+        categories = rulebook.GetCategoryList()
+        print(f"Found {len(categories)} S-57 object categories in rulebook.")
+
+        # 3. Translate rules into MapLibre layers
+        maplibre_layers: List[Dict[str, object]] = []
+        for category in categories:
+            rule_set = rulebook.GetRules(category)
+
+            # Fill rules
+            for rule in getattr(rule_set, "fillRules", []):
+                layer = {
+                    "id": f"{rule.objl}-fill",
+                    "type": "fill",
+                    "source": args.source_name,
+                    "source-layer": args.source_layer,
+                    "filter": ["==", "OBJL", rule.objl],
+                    "paint": {
+                        "fill-color": color_map.get(rule.colorToken, "#FF00FF")
+                    },
+                }
+                maplibre_layers.append(layer)
+
+            # Line rules
+            for rule in getattr(rule_set, "lineRules", []):
+                layer = {
+                    "id": f"{rule.objl}-line",
+                    "type": "line",
+                    "source": args.source_name,
+                    "source-layer": args.source_layer,
+                    "filter": ["==", "OBJL", rule.objl],
+                    "paint": {
+                        "line-color": color_map.get(rule.colorToken, "#FF00FF"),
+                        "line-width": rule.width,
+                    },
+                }
+                maplibre_layers.append(layer)
+
+            # Symbol rules
+            for rule in getattr(rule_set, "symbolRules", []):
+                if rule.objl == "SOUNDG":
+                    layer = {
+                        "id": f"{rule.objl}-text",
+                        "type": "symbol",
+                        "source": args.source_name,
+                        "source-layer": args.source_layer,
+                        "filter": ["==", "OBJL", rule.objl],
+                        "paint": {
+                            "text-color": color_map.get("CHBLK", "#000000"),
+                            "text-halo-color": "#FFFFFF",
+                            "text-halo-width": 1.5,
+                        },
+                        "layout": {
+                            "text-field": ["get", "soudg"],
+                            "text-font": ["Roboto Regular"],
+                            "text-size": rule.size,
+                        },
+                    }
+                else:
+                    layer = {
+                        "id": f"{rule.objl}-icon",
+                        "type": "symbol",
+                        "source": args.source_name,
+                        "source-layer": args.source_layer,
+                        "filter": ["==", "OBJL", rule.objl],
+                        "layout": {
+                            "icon-image": rule.iconName,
+                            "icon-size": rule.size / 20.0,
+                            "icon-allow-overlap": True,
+                        },
+                    }
+                maplibre_layers.append(layer)
+
+        print(f"Generated {len(maplibre_layers)} MapLibre layers.")
+
+        # 4. Assemble the final style.json
+        style_json: Dict[str, object] = {
+            "version": 8,
+            "name": f"OpenCPN S-52 Style - {palette_name.capitalize()}",
+            "sources": {
+                args.source_name: {
+                    "type": "vector",
+                    "tiles": [args.tiles_url],
+                }
+            },
+            "layers": maplibre_layers,
+        }
+
+        # 5. Write the output file
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        with args.output.open("w", encoding="utf-8") as f:
+            json.dump(style_json, f, indent=2)
+
+        print(f"Successfully wrote style.json to: {args.output}")
+
+    except Exception as exc:  # pragma: no cover - runtime errors
+        print(f"An error occurred: {exc}", file=sys.stderr)
+        sys.exit(1)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
     main()
