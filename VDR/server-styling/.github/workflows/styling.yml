@@ -40,6 +40,9 @@ jobs:
             --glyphs "/glyphs/{fontstack}/{range}.pbf" \
             --safety-contour 10 \
             --output VDR/server-styling/dist/style.s52.day.json
+      - name: Validate style
+        run: |
+          npx @maplibre/maplibre-gl-style-spec@latest validate VDR/server-styling/dist/style.s52.day.json
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:
