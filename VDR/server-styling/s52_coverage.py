@@ -40,14 +40,14 @@ def main() -> None:  # pragma: no cover - CLI helper
 
     # Style coverage -------------------------------------------------------
     base = Path(__file__).resolve().parent
-    style_path = base / "dist" / "style.s52.day.json"
-    coverage_dir = base / "dist" / "coverage"
+    dist_dir = base / "dist"
+    coverage_dir = dist_dir / "coverage"
     current_path = coverage_dir / "style_coverage.json"
     prev_path = coverage_dir / "style_coverage.prev.json"
     tokens: list[str] = []
     layers: list[dict[str, str]] = []
     symbols_seen: set[str] = set()
-    if style_path.exists():
+    for style_path in dist_dir.glob("style.s52.*.json"):
         style = json.loads(style_path.read_text())
         for lyr in style.get("layers", []):
             token = lyr.get("metadata", {}).get("maplibre:s52")

@@ -22,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sprite-prefix", default="")
     p.add_argument("--glyphs", required=True)
     p.add_argument("--safety-contour", type=float, default=0.0)
+    p.add_argument("--emit-name")
     return p.parse_args()
 
 
@@ -50,6 +51,7 @@ def main() -> int:  # pragma: no cover - CLI helper
             str(args.safety_contour),
             "--sprite-prefix",
             args.sprite_prefix,
+            *( ["--emit-name", args.emit_name] if args.emit_name else [] ),
             "--palette",
             pal,
             "--output",

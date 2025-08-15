@@ -6,7 +6,7 @@ BEGIN = "<!-- BEGIN:S52_COVERAGE -->"
 END = "<!-- END:S52_COVERAGE -->"
 
 
-def render(coverage_path: Path, symbols_path: Path, limit: int = 20) -> str:
+def render(coverage_path: Path, symbols_path: Path, limit: int = 25) -> str:
     coverage = json.loads(coverage_path.read_text())
     total = coverage.get("totalLookups", 0)
     covered = coverage.get("coveredByStyle", 0)
