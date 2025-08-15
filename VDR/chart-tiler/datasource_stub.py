@@ -75,3 +75,15 @@ def features_for_tile(bbox: BBox, z: int, x: int, y: int) -> Iterable[Dict[str, 
             "geometry": {"type": "Point", "coordinates": [sx, sy]},
             "properties": {"OBJL": "SOUNDG", "VALSOU": val},
         }
+
+    # Underwater hazards ---------------------------------------------------
+    hx = midx + (maxx - midx) / 2.0
+    hy = midy
+    yield {
+        "geometry": {"type": "Point", "coordinates": [hx, hy]},
+        "properties": {"OBJL": "WRECKS", "VALSOU": 3.0},
+    }
+    yield {
+        "geometry": {"type": "Point", "coordinates": [hx, hy + (maxy - midy) / 4.0]},
+        "properties": {"OBJL": "OBSTRN", "VALSOU": 20.0},
+    }

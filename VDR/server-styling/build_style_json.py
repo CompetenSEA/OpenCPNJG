@@ -16,48 +16,16 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List
 
-
-# ---------------------------------------------------------------------------
-# Parsing helpers
-# ---------------------------------------------------------------------------
+from s52_xml import parse_day_colors, parse_lookups
 
 
-def parse_day_colors(path: Path) -> Dict[str, str]:
-    """Return mapping of colour token -> ``#RRGGBB`` from ``chartsymbols.xml``."""
-
-    tree = ET.parse(path)
-    root = tree.getroot()
-    table = root.find(".//color-table[@name='DAY_BRIGHT']")
-    if table is None:
-        raise ValueError("DAY_BRIGHT colour table not found")
-    colours: Dict[str, str] = {}
-    for elem in table.findall("color"):
-        name = elem.get("name")
-        r = elem.get("r")
-        g = elem.get("g")
-        b = elem.get("b")
-        if name and r and g and b:
-            try:
-                colours[name] = f"#{int(r):02x}{int(g):02x}{int(b):02x}"
-            except ValueError:
-                continue
-    return colours
-
-
-def parse_lookup_priority(path: Path) -> Dict[str, int]:
-    """Best effort extraction of ``disp-prio`` values for each lookup object."""
-
-    tree = ET.parse(path)
-    root = tree.getroot()
+def _lookup_priorities(lookups: List[Dict[str, str]]) -> Dict[str, int]:
     priorities: Dict[str, int] = {}
-    for lookup in root.findall(".//lookups/lookup"):
-        name = lookup.get("name")
-        if not name:
-            continue
-        disp = lookup.findtext("disp-prio", default="")
+    for lu in lookups:
+        disp = lu.get("disp_prio", "")
         m = re.search(r"(\d+)", disp)
         if m:
-            priorities[name] = int(m.group(1))
+            priorities[lu["objl"]] = int(m.group(1))
     return priorities
 
 
@@ -230,6 +198,30 @@ def build_layers(
         )
     )
 
+    # UDW hazards -----------------------------------------------------------
+    layers.append(
+        (
+            prio("OBSTRN", 54),
+            {
+                "id": "udw-hazards",
+                "type": "symbol",
+                "source": source,
+                "source-layer": source_layer,
+                "filter": [
+                    "in",
+                    ["get", "OBJL"],
+                    ["literal", ["OBSTRN", "WRECKS", "UWTROC", "ROCKS"]],
+                ],
+                "layout": {
+                    "icon-image": ["coalesce", ["get", "hazardIcon"], ""],
+                    "icon-allow-overlap": True,
+                    "icon-size": 1.0,
+                },
+                "metadata": {"maplibre:s52": "UDWHAZ-hazardIcon"},
+            },
+        )
+    )
+
     # SOUNDG ----------------------------------------------------------------
     layers.append(
         (
@@ -251,11 +243,15 @@ def build_layers(
                 "paint": {
                     "text-color": [
                         "case",
-                        ["<", ["to-number", ["get", "VALSOU"]], sc],
-                        get_colour(colors, "SNDG1"),
-                        get_colour(colors, "SNDG2"),
+                        [
+                            "<",
+                            ["to-number", ["coalesce", ["get", "VALSOU"], ["get", "VAL"]]],
+                            sc,
+                        ],
+                        "#353535",
+                        "#FFFFFF",
                     ],
-                    "text-halo-color": "#ffffff",
+                    "text-halo-color": "#FFFFFF",
                     "text-halo-width": 1,
                 },
                 "metadata": {"maplibre:s52": "SOUNDG"},
@@ -292,9 +288,10 @@ def _fail(msg: str) -> None:
 
 def main() -> None:  # pragma: no cover - CLI wrapper
     args = parse_args()
-
-    colors = parse_day_colors(args.chartsymbols)
-    priorities = parse_lookup_priority(args.chartsymbols)
+    root = ET.parse(args.chartsymbols).getroot()
+    colors = parse_day_colors(root)
+    lookups = parse_lookups(root)
+    priorities = _lookup_priorities(lookups)
 
     layers = build_layers(
         colors, args.safety_contour, args.source_name, args.source_layer, priorities

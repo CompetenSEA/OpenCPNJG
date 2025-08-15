@@ -20,15 +20,27 @@ DIST = ROOT.parent / "server-styling" / "dist"
 (DIST / "style.s52.day.json").write_text(
     json.dumps({"version": 8, "sources": {}, "layers": []})
 )
-(DIST / "sprites" / "s52-day.json").write_text("{}")
+(DIST / "sprites" / "s52-day.json").write_text(
+    json.dumps(
+        {
+            "ISODGR51": {"x": 0, "y": 0, "width": 1, "height": 1, "pixelRatio": 1, "sdf": False},
+            "DANGER51": {"x": 1, "y": 0, "width": 1, "height": 1, "pixelRatio": 1, "sdf": False},
+        }
+    )
+)
 (DIST / "assets" / "s52" / "rastersymbols-day.png").write_bytes(
     base64.b64decode(
         b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/woAAgMBgNwK9+wAAAAASUVORK5CYII="
     )
 )
 (DIST / "assets" / "s52" / "chartsymbols.xml").write_text(
-    "<root><color-table name='DAY_BRIGHT'><color name='DEPVS' r='1' g='2' b='3'/>"
-    "<color name='DEPDW' r='4' g='5' b='6'/></color-table></root>"
+    "<root>"
+    "<color-table name='DAY_BRIGHT'><color name='DEPVS' r='1' g='2' b='3'/><color name='DEPDW' r='4' g='5' b='6'/></color-table>"
+    "<symbols>"
+    "<symbol name='ISODGR51'><bitmap width='1' height='1'><graphics-location x='0' y='0'/></bitmap></symbol>"
+    "<symbol name='DANGER51'><bitmap width='1' height='1'><graphics-location x='1' y='0'/></bitmap></symbol>"
+    "</symbols>"
+    "</root>"
 )
 
 import tileserver
@@ -78,6 +90,40 @@ def test_soundg_threshold() -> None:
                 flipped = True
                 break
     assert flipped
+
+
+def test_hazard_icon_present() -> None:
+    (DIST / "sprites" / "s52-day.json").write_text(
+        json.dumps(
+            {
+                "ISODGR51": {
+                    "x": 0,
+                    "y": 0,
+                    "width": 1,
+                    "height": 1,
+                    "pixelRatio": 1,
+                    "sdf": False,
+                },
+                "DANGER51": {
+                    "x": 1,
+                    "y": 0,
+                    "width": 1,
+                    "height": 1,
+                    "pixelRatio": 1,
+                    "sdf": False,
+                },
+            }
+        )
+    )
+    feats = _decode(10)
+    hazard_feats = [f for f in feats if f["properties"].get("OBJL") in ("WRECKS", "OBSTRN")]
+    assert any(f["properties"].get("hazardIcon") for f in hazard_feats)
+    assert any(not f["properties"].get("hazardIcon") for f in hazard_feats)
+    sprite = json.loads((DIST / "sprites" / "s52-day.json").read_text())
+    for f in hazard_feats:
+        icon = f["properties"].get("hazardIcon")
+        if icon:
+            assert icon in sprite
 
 
 def test_headers_and_cache() -> None:
