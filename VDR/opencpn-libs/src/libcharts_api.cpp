@@ -19,8 +19,11 @@ unsigned char *charts_render_tile_png(double minx, double miny, double maxx,
 }
 
 unsigned char *charts_render_tile_mvt(double minx, double miny, double maxx,
-                                      double maxy, int z, size_t *out_size) {
-  auto data = charts::render_tile_mvt(minx, miny, maxx, maxy, z);
+                                      double maxy, int z,
+                                      double safety_contour,
+                                      size_t *out_size) {
+  auto data = charts::render_tile_mvt(minx, miny, maxx, maxy, z,
+                                      safety_contour);
   unsigned char *buf = new unsigned char[data.size()];
   std::memcpy(buf, data.data(), data.size());
   if (out_size)

@@ -10,6 +10,7 @@ RULES_DIR = Path(__file__).parent / "s52_rules"
 def build_style() -> dict:
     colors = json.loads((RULES_DIR / "colors.json").read_text())
     layers_cfg = json.loads((RULES_DIR / "layers.json").read_text())
+    expressions = json.loads((RULES_DIR / "expressions.json").read_text())
     layers = []
     for layer in layers_cfg:
         color = colors[layer["color"]]
@@ -19,6 +20,10 @@ def build_style() -> dict:
             paint = {"line-color": color}
         else:  # symbol
             paint = {"text-color": color}
+        expr = expressions.get(layer["feature"])
+        if expr:
+            key = next(iter(paint))
+            paint[key] = expr
         layers.append(
             {
                 "id": layer["feature"],

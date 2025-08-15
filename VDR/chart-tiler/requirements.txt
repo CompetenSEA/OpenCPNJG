@@ -3,3 +3,4 @@ uvicorn
 prometheus_client
 redis
 httpx
+mapbox-vector-tile

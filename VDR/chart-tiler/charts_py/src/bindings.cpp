@@ -39,7 +39,7 @@ PYBIND11_MODULE(_core, m) {
                                        palette.c_str(), &size);
         } else {
           buf = charts_render_tile_mvt(bbox[0], bbox[1], bbox[2], bbox[3], z,
-                                       &size);
+                                       safety, &size);
         }
         py::bytes result(reinterpret_cast<const char *>(buf), size);
         charts_free_buffer(buf);
