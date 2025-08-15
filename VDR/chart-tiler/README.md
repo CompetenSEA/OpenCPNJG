@@ -27,6 +27,25 @@ populates a `charts.sqlite` database with `object_class`, `attribute_class` and
 python ingest_charts.py
 ```
 
+### SQLite schema
+
+The generated ``charts.sqlite`` contains three simple tables used by the tile
+server at runtime:
+
+``object_class``
+: ``id`` (integer primary key), ``acronym`` (e.g. ``BOYSPP``) and human readable
+  ``name``.
+
+``attribute_class``
+: ``id`` (integer primary key), ``acronym`` and ``name`` fields mirroring the
+  S‑57 attribute dictionary.
+
+``chart_metadata``
+: ``key``/``value`` pairs for global information such as the chart edition.
+
+Running the ingestion script multiple times is safe – rows are replaced on
+conflict, keeping the database idempotent.
+
 ## FastAPI tile service
 
 `tileserver.py` exposes `/tiles/{z}/{x}/{y}?fmt=png` (or `fmt=mvt`) using only

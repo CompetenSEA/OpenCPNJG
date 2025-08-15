@@ -28,3 +28,14 @@ def test_metrics_endpoint():
     r = client.get("/metrics")
     assert r.status_code == 200
     assert b"tile_gen_ms" in r.content
+
+
+def test_cache_hits_metric():
+    import re
+
+    # First call primes the cache; second should be served from the LRU cache.
+    client.get("/tiles/cm93/0/0/0?fmt=png&palette=day&safetyContour=0")
+    client.get("/tiles/cm93/0/0/0?fmt=png&palette=day&safetyContour=0")
+    metrics = client.get("/metrics").text
+    match = re.search(r"cache_hits_total\s+(\d+)", metrics)
+    assert match and int(match.group(1)) >= 1
