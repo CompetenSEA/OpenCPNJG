@@ -8,5 +8,6 @@ std::vector<unsigned char> render_tile_png(double minx, double miny,
                                            double maxx, double maxy, int z,
                                            const std::string& palette = "day");
 std::vector<unsigned char> render_tile_mvt(double minx, double miny,
-                                           double maxx, double maxy, int z);
+                                           double maxx, double maxy, int z,
+                                           double safety_contour);
 }  // namespace charts

@@ -22,6 +22,10 @@ except Exception:  # pragma: no cover - used in CI
     _PNG_1x1 = b64decode(
         b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2P8////fwAJ+wP7KYwG4gAAAABJRU5ErkJggg=="
     )
+    try:
+        from mapbox_vector_tile import encode
+    except Exception:  # pragma: no cover
+        encode = None
 
     def generate_tile(bbox, z, options=None) -> bytes:
         """Return a dummy PNG or a tiny MVT payload.
@@ -41,6 +45,19 @@ except Exception:  # pragma: no cover - used in CI
             raise TypeError("safetyContour must be numeric")
         if fmt == "png":
             return _PNG_1x1
+        if encode:
+            layer = [
+                {
+                    "name": "SOUNDG",
+                    "features": [
+                        {
+                            "geometry": {"type": "Point", "coordinates": [0, 0]},
+                            "properties": {"isShallow": safety > 5},
+                        }
+                    ],
+                }
+            ]
+            return encode(layer)
         return b"MVT"
 
     def get_object_classes():
