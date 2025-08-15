@@ -9,7 +9,9 @@ full chart rendering pipeline.
 from __future__ import annotations
 
 import base64
+import logging
 import os
+import time
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
@@ -28,6 +30,7 @@ from mapbox_vector_tile import encode as mvt_encode
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"])
+logger = logging.getLogger("tileserver")
 
 _tile_gen_ms = Histogram("tile_gen_ms", "Time spent generating tiles", unit="ms")
 _cache_hits = Counter("cache_hits", "Cache hits")
@@ -100,10 +103,23 @@ def tiles_png(z: int, x: int, y: str, sc: float = 0.0) -> Response:
 
 @app.get("/tiles/cm93/{z}/{x}/{y}")
 def tiles(z: int, x: int, y: int, fmt: str = "mvt", sc: float = 0.0) -> Response:
+    start = time.perf_counter()
     key = _cache_key(fmt, sc, z, x, y)
     cached = _get_from_redis(key)
+    cache_state = "hit" if cached is not None else "miss"
     if cached is not None:
         media = "image/png" if fmt == "png" else "application/x-protobuf"
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.info(
+            "fmt=%s sc=%s z=%d x=%d y=%d cache=%s ms=%.2f",
+            fmt,
+            sc,
+            z,
+            x,
+            y,
+            cache_state,
+            duration_ms,
+        )
         return Response(content=cached, media_type=media)
 
     if fmt == "png":
@@ -114,6 +130,17 @@ def tiles(z: int, x: int, y: int, fmt: str = "mvt", sc: float = 0.0) -> Response
         media_type = "application/x-protobuf"
 
     _set_redis(key, data)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "fmt=%s sc=%s z=%d x=%d y=%d cache=%s ms=%.2f",
+        fmt,
+        sc,
+        z,
+        x,
+        y,
+        cache_state,
+        duration_ms,
+    )
     return Response(content=data, media_type=media_type)
 
 

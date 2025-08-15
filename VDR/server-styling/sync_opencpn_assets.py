@@ -1,10 +1,12 @@
 """Synchronise OpenCPN S-52 assets.
 
-The script uses a simple lock file to pin the upstream OpenCPN repository
-commit containing the S-52 data files.  Only a minimal set of text assets are
-copied into the destination directory and a manifest of their sizes and SHA256
-hashes is produced.  Binary artefacts (PNG/RLE/CSV) are intentionally not
-committed to version control; they are downloaded at build time.
+The script uses a lock file to pin the upstream OpenCPN repository commit
+containing the S-52 data files. Alternatively a local source directory may be
+provided via ``--local-src`` to avoid network access during development. Only a
+minimal set of text assets are copied into the destination directory and a
+manifest of their sizes and SHA256 hashes is produced. Binary artefacts
+(PNG/RLE/CSV) are intentionally not committed to version control; they are
+downloaded at build time.
 """
 
 from __future__ import annotations
@@ -74,42 +76,53 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser.add_argument(
         "--force", action="store_true", help="Overwrite destination if it exists"
     )
+    parser.add_argument(
+        "--local-src",
+        type=Path,
+        help="Copy assets from a local OpenCPN data directory instead of cloning",
+    )
     args = parser.parse_args()
 
     if args.dest.exists() and not args.force:
         raise SystemExit(f"Destination {args.dest} exists; use --force to overwrite")
 
-    lock = _parse_lock(args.lock)
-    repo = lock["repo"]
-    repo_path = lock["path"].strip("/")
-    commit = lock["commit"]
-
     args.dest.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp = Path(tmpdir)
-        subprocess.run(["git", "init", tmpdir], check=True, stdout=subprocess.DEVNULL)
-        subprocess.run(
-            ["git", "-C", tmpdir, "remote", "add", "origin", repo],
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
-        subprocess.run(
-            ["git", "-C", tmpdir, "fetch", "--depth", "1", "origin", commit],
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
-        subprocess.run(
-            ["git", "-C", tmpdir, "checkout", commit],
-            check=True,
-            stdout=subprocess.DEVNULL,
-        )
-
-        src_base = tmp / repo_path
+    if args.local_src:
+        src_base = args.local_src
         if not src_base.exists():
-            raise FileNotFoundError(f"Path '{repo_path}' not found in repo")
-
+            raise FileNotFoundError(f"Local source '{src_base}' not found")
         manifest = _copy_required(src_base, args.dest)
+    else:
+        lock = _parse_lock(args.lock)
+        repo = lock["repo"]
+        repo_path = lock["path"].strip("/")
+        commit = lock["commit"]
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            subprocess.run(["git", "init", tmpdir], check=True, stdout=subprocess.DEVNULL)
+            subprocess.run(
+                ["git", "-C", tmpdir, "remote", "add", "origin", repo],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            subprocess.run(
+                ["git", "-C", tmpdir, "fetch", "--depth", "1", "origin", commit],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+            subprocess.run(
+                ["git", "-C", tmpdir, "checkout", commit],
+                check=True,
+                stdout=subprocess.DEVNULL,
+            )
+
+            src_base = tmp / repo_path
+            if not src_base.exists():
+                raise FileNotFoundError(f"Path '{repo_path}' not found in repo")
+
+            manifest = _copy_required(src_base, args.dest)
 
     manifest_path = args.dest / "assets.manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
