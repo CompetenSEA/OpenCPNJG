@@ -11,9 +11,10 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Dict, List
 
 
 # ---------------------------------------------------------------------------
@@ -73,9 +74,16 @@ def get_colour(colours: Dict[str, str], token: str, fallback: str | None = None)
 # ---------------------------------------------------------------------------
 
 
-def build_layers(colors: Dict[str, str], sc: float, source: str, source_layer: str,
-                 priorities: Dict[str, int]) -> List[Tuple[int, Dict[str, object]]]:
-    layers: List[Tuple[int, Dict[str, object]]] = []
+def build_layers(
+    colors: Dict[str, str],
+    sc: float,
+    source: str,
+    source_layer: str,
+    priorities: Dict[str, int],
+) -> List[Dict[str, object]]:
+    """Construct and order Tier‑1 style layers for the Day palette."""
+
+    layers: List[tuple[int, Dict[str, object]]] = []
 
     def prio(obj: str, default: int) -> int:
         return priorities.get(obj, default)
@@ -245,7 +253,7 @@ def build_layers(colors: Dict[str, str], sc: float, source: str, source_layer: s
     )
 
     layers.sort(key=lambda tup: tup[0])
-    return layers
+    return [layer for _, layer in layers]
 
 
 # ---------------------------------------------------------------------------
@@ -266,16 +274,20 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _fail(msg: str) -> None:
+    print(msg, file=sys.stderr)
+    sys.exit(2)
+
+
 def main() -> None:  # pragma: no cover - CLI wrapper
     args = parse_args()
 
     colors = parse_day_colors(args.chartsymbols)
     priorities = parse_lookup_priority(args.chartsymbols)
 
-    layer_entries = build_layers(
+    layers = build_layers(
         colors, args.safety_contour, args.source_name, args.source_layer, priorities
     )
-    layers = [layer for _, layer in layer_entries]
 
     style = {
         "version": 8,
@@ -290,15 +302,15 @@ def main() -> None:  # pragma: no cover - CLI wrapper
 
     # Basic validation ------------------------------------------------------
     if style.get("version") != 8:
-        raise SystemExit("style.json must be version 8")
+        _fail("style.json must be version 8")
     if args.source_name not in style["sources"]:
-        raise SystemExit("Vector source missing from style")
+        _fail("Vector source missing from style")
     for lyr in style["layers"]:
         if "paint" not in lyr and "layout" not in lyr:
-            raise SystemExit(f"Layer {lyr['id']} missing paint/layout")
+            _fail(f"Layer {lyr['id']} missing paint/layout")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(style, indent=2))
+    args.output.write_text(json.dumps(style, indent=2, sort_keys=True))
     print(f"Wrote style with {len(layers)} layers to {args.output}")
 
 
