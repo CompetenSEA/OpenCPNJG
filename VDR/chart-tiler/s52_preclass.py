@@ -49,7 +49,17 @@ class S52PreClassifier:
         if objl in {"OBSTRN", "WRECKS", "UWTROC", "ROCKS"}:
             icon = self._hazard_icon(objl, props)
             if icon and (not self.symbols or icon in self.symbols):
-                return {"hazardIcon": icon}
+                result: Dict[str, Any] = {"hazardIcon": icon}
+                meta = self.symbols.get(icon) if self.symbols else None
+                if meta and meta.get("anchor"):
+                    w = meta.get("w", 0)
+                    h = meta.get("h", 0)
+                    ax, ay = meta["anchor"]
+                    offx = int(round(w / 2 - ax))
+                    offy = int(round(h / 2 - ay))
+                    result["hazardOffX"] = offx
+                    result["hazardOffY"] = offy
+                return result
             return {}
 
         # LNDARE/COALNE and other objects use static styling

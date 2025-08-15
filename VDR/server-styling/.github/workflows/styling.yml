@@ -47,6 +47,14 @@ jobs:
       - name: Coverage summary
         run: |
           python VDR/server-styling/s52_coverage.py --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml
+      - name: Docs freshness
+        run: |
+          python VDR/server-styling/tools/update_docs_from_coverage.py \
+            --docs VDR/docs/s52s57cm93.md \
+            --coverage VDR/server-styling/dist/coverage/style_coverage.json \
+            --symbols VDR/server-styling/dist/coverage/symbols_seen.txt || true
+          git diff --quiet || {
+            echo "Docs changed. Please commit VDR/docs/s52s57cm93.md"; exit 2; }
       - name: Upload artifacts
         uses: actions/upload-artifact@v3
         with:

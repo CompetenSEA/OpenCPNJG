@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 import mapbox_vector_tile
+import pytest
 from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,7 +39,7 @@ DIST = ROOT.parent / "server-styling" / "dist"
     "<color-table name='DAY_BRIGHT'><color name='DEPVS' r='1' g='2' b='3'/><color name='DEPDW' r='4' g='5' b='6'/></color-table>"
     "<symbols>"
     "<symbol name='ISODGR51'><bitmap width='1' height='1'><graphics-location x='0' y='0'/></bitmap></symbol>"
-    "<symbol name='DANGER51'><bitmap width='1' height='1'><graphics-location x='1' y='0'/></bitmap></symbol>"
+    "<symbol name='DANGER51'><bitmap width='1' height='1'><graphics-location x='1' y='0'/></bitmap><pivot x='0' y='0'/></symbol>"
     "</symbols>"
     "</root>"
 )
@@ -155,6 +156,16 @@ def test_hazard_icon_prefixed() -> None:
     assert any(
         f["properties"].get("hazardIcon") and f"s52-{f['properties']['hazardIcon']}" in sprite
         for f in hazard_feats
+    )
+
+
+def test_hazard_offsets_present() -> None:
+    feats = _decode(10)
+    hazards = [f for f in feats if f["properties"].get("hazardIcon") == "DANGER51"]
+    if not hazards:
+        pytest.skip("DANGER51 feature missing")
+    assert any(
+        "hazardOffX" in h["properties"] and "hazardOffY" in h["properties"] for h in hazards
     )
 
 
