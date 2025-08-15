@@ -29,16 +29,17 @@ class S52PreClassifier:
             is_shallow = min(values) < self.sc if values else False
             if is_shallow:
                 token = "DEPVS" if "DEPVS" in self.colors else "DEPIT1"
-                return {"fillToken": token, "isShallow": True}
+                return {"fillToken": token, "isShallow": True, "depthBand": "VS"}
             max_val = max(values) if values else -9999
             if max_val >= self.sc:
-                return {"fillToken": "DEPDW", "isShallow": False}
-            return {"isShallow": False}
+                return {"fillToken": "DEPDW", "isShallow": False, "depthBand": "DW"}
+            return {"isShallow": False, "depthBand": "DW"}
 
         if objl == "DEPCNT":
             is_safety = float(props.get("VALDCO", -9999)) == self.sc
             is_low_acc = float(props.get("QUAPOS", 0)) >= 2
-            return {"isSafety": is_safety, "isLowAcc": is_low_acc}
+            role = "safety" if is_safety else "normal"
+            return {"isSafety": is_safety, "isLowAcc": is_low_acc, "role": role}
 
         if objl == "SOUNDG":
             valsou = props.get("VALSOU")
