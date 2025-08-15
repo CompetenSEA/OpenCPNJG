@@ -24,12 +24,16 @@ def _hash_path(path: Path) -> str:
     return h.hexdigest()
 
 
-def stage_assets(repo_data: Path, dest: Path, force: bool) -> dict[str, str]:
+def stage_assets(
+    repo_data: Path, dest: Path, force: bool
+) -> tuple[dict[str, str], list[str]]:
     manifest: dict[str, str] = {}
+    missing: list[str] = []
     dest.mkdir(parents=True, exist_ok=True)
     for name in ASSETS:
         src = repo_data / name
         if not src.exists():
+            missing.append(name)
             continue
         dst = dest / name
         if dst.exists() and not force:
@@ -42,7 +46,7 @@ def stage_assets(repo_data: Path, dest: Path, force: bool) -> dict[str, str]:
         (dest / "assets.manifest.json").write_text(
             json.dumps(manifest, indent=2, sort_keys=True)
         )
-    return manifest
+    return manifest, missing
 
 
 def main() -> int:  # pragma: no cover - CLI helper
@@ -51,8 +55,13 @@ def main() -> int:  # pragma: no cover - CLI helper
     p.add_argument("--dest", type=Path, required=True)
     p.add_argument("--force", action="store_true")
     args = p.parse_args()
-    manifest = stage_assets(args.repo_data, args.dest, args.force)
-    print(f"Staged {len(manifest)} assets" if manifest else "No assets staged")
+    manifest, missing = stage_assets(args.repo_data, args.dest, args.force)
+    if manifest:
+        print(f"Staged {len(manifest)} assets")
+    else:
+        print("No assets staged")
+    if missing:
+        print("Missing assets: " + ", ".join(sorted(missing)))
     return 0
 
 
