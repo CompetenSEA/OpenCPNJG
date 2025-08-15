@@ -1,0 +1,72 @@
+{
+  "version": 8,
+  "name": "OpenCPN S-52 Style - Day",
+  "sources": {
+    "cm93": {
+      "type": "vector",
+      "tiles": [
+        "/tiles/cm93/{z}/{x}/{y}?fmt=mvt"
+      ]
+    }
+  },
+  "layers": [
+    {
+      "id": "LNDARE-fill",
+      "type": "fill",
+      "source": "cm93",
+      "source-layer": "features",
+      "filter": [
+        "==",
+        "OBJL",
+        "LNDARE"
+      ],
+      "paint": {
+        "fill-color": "#cccc00"
+      }
+    },
+    {
+      "id": "DEPARE-fill",
+      "type": "fill",
+      "source": "cm93",
+      "source-layer": "features",
+      "filter": [
+        "==",
+        "OBJL",
+        "DEPARE"
+      ],
+      "paint": {
+        "fill-color": "#a0a0f0"
+      }
+    },
+    {
+      "id": "COALNE-line",
+      "type": "line",
+      "source": "cm93",
+      "source-layer": "features",
+      "filter": [
+        "==",
+        "OBJL",
+        "COALNE"
+      ],
+      "paint": {
+        "line-color": "#000000",
+        "line-width": 1.5
+      }
+    },
+    {
+      "id": "DEPCNT-line",
+      "type": "line",
+      "source": "cm93",
+      "source-layer": "features",
+      "filter": [
+        "==",
+        "OBJL",
+        "DEPCNT"
+      ],
+      "paint": {
+        "line-color": "#000000",
+        "line-width": 1.0
+      }
+    }
+  ]
+}

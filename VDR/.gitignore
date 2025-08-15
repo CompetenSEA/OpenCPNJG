@@ -5,3 +5,4 @@ chart-tiler/tests/*.mbtiles
 chart-tiler/tests/*.tif
 testdata/*
 !testdata/README.md
+web-client/node_modules/

@@ -147,6 +147,12 @@ def parse_args() -> argparse.Namespace:
         help="Name of the source layer containing S-57 features",
     )
     parser.add_argument(
+        "--categories",
+        nargs="*",
+        default=["LNDARE", "DEPARE", "COALNE", "DEPCNT"],
+        help="Limit output to these S-57 object categories",
+    )
+    parser.add_argument(
         "--palette",
         default="day",
         choices=["day", "dusk", "night"],
@@ -190,16 +196,21 @@ def main() -> None:  # pragma: no cover - CLI wrapper
 
         # 2. Load the S-52 rulebook
         rulebook = ps52.RuleBook.Load(str(args.rulebook))
-        categories = rulebook.GetCategoryList()
+        all_categories = set(rulebook.GetCategoryList())
+        categories = [c for c in args.categories if c in all_categories]
+        categories_set = set(categories)
         print(f"Found {len(categories)} S-57 object categories in rulebook.")
 
         # 3. Translate rules into MapLibre layers
         maplibre_layers: List[Dict[str, object]] = []
+        processed: set[str] = set()
         for category in categories:
             rule_set = rulebook.GetRules(category)
 
             # Fill rules
             for rule in getattr(rule_set, "fillRules", []):
+                if rule.objl not in categories_set or rule.objl in processed:
+                    continue
                 layer = {
                     "id": f"{rule.objl}-fill",
                     "type": "fill",
@@ -211,9 +222,12 @@ def main() -> None:  # pragma: no cover - CLI wrapper
                     },
                 }
                 maplibre_layers.append(layer)
+                processed.add(rule.objl)
 
             # Line rules
             for rule in getattr(rule_set, "lineRules", []):
+                if rule.objl not in categories_set or rule.objl in processed:
+                    continue
                 layer = {
                     "id": f"{rule.objl}-line",
                     "type": "line",
@@ -226,41 +240,26 @@ def main() -> None:  # pragma: no cover - CLI wrapper
                     },
                 }
                 maplibre_layers.append(layer)
+                processed.add(rule.objl)
 
             # Symbol rules
             for rule in getattr(rule_set, "symbolRules", []):
-                if rule.objl == "SOUNDG":
-                    layer = {
-                        "id": f"{rule.objl}-text",
-                        "type": "symbol",
-                        "source": args.source_name,
-                        "source-layer": args.source_layer,
-                        "filter": ["==", "OBJL", rule.objl],
-                        "paint": {
-                            "text-color": color_map.get("CHBLK", "#000000"),
-                            "text-halo-color": "#FFFFFF",
-                            "text-halo-width": 1.5,
-                        },
-                        "layout": {
-                            "text-field": ["get", "soudg"],
-                            "text-font": ["Roboto Regular"],
-                            "text-size": rule.size,
-                        },
-                    }
-                else:
-                    layer = {
-                        "id": f"{rule.objl}-icon",
-                        "type": "symbol",
-                        "source": args.source_name,
-                        "source-layer": args.source_layer,
-                        "filter": ["==", "OBJL", rule.objl],
-                        "layout": {
-                            "icon-image": rule.iconName,
-                            "icon-size": rule.size / 20.0,
-                            "icon-allow-overlap": True,
-                        },
-                    }
+                if rule.objl not in categories_set or rule.objl in processed:
+                    continue
+                layer = {
+                    "id": f"{rule.objl}-icon",
+                    "type": "symbol",
+                    "source": args.source_name,
+                    "source-layer": args.source_layer,
+                    "filter": ["==", "OBJL", rule.objl],
+                    "layout": {
+                        "icon-image": getattr(rule, "iconName", ""),
+                        "icon-size": getattr(rule, "size", 20.0) / 20.0,
+                        "icon-allow-overlap": True,
+                    },
+                }
                 maplibre_layers.append(layer)
+                processed.add(rule.objl)
 
         print(f"Generated {len(maplibre_layers)} MapLibre layers.")
 
