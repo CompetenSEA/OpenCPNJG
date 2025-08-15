@@ -23,12 +23,22 @@ except Exception:  # pragma: no cover - used in CI
         b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2P8////fwAJ+wP7KYwG4gAAAABJRU5ErkJggg=="
     )
 
-    def generate_tile(bbox, z, fmt: str = "png", palette: str = "day") -> bytes:
+    def generate_tile(bbox, z, options=None) -> bytes:
         """Return a dummy PNG or a tiny MVT payload.
 
         Parameters mirror the compiled extension but the implementation only
         returns static bytes suitable for unit tests.
         """
+        options = options or {}
+        fmt = options.get("format", "png")
+        palette = options.get("palette", "day")
+        safety = options.get("safetyContour", 0.0)
+        if fmt not in {"png", "mvt"}:
+            raise ValueError("format must be 'png' or 'mvt'")
+        if palette not in {"day", "dusk", "night"}:
+            raise ValueError("palette must be 'day', 'dusk', or 'night'")
+        if not isinstance(safety, (int, float)):
+            raise TypeError("safetyContour must be numeric")
         if fmt == "png":
             return _PNG_1x1
         return b"MVT"

@@ -1,0 +1,19 @@
+name: opencpn-libs CI
+
+on:
+  push:
+    paths:
+      - 'VDR/opencpn-libs/**'
+  pull_request:
+    paths:
+      - 'VDR/opencpn-libs/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build library
+        run: |
+          cmake -S VDR/opencpn-libs -B VDR/opencpn-libs/build
+          cmake --build VDR/opencpn-libs/build
