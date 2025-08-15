@@ -221,7 +221,19 @@ def build_layers(
                     ],
                     "icon-allow-overlap": True,
                     "icon-anchor": "center",
-                    "icon-offset": [0, 0],
+                    "icon-offset": [
+                        "array",
+                        "number",
+                        2,
+                        [
+                            "to-number",
+                            ["coalesce", ["get", "hazardOffX"], 0],
+                        ],
+                        [
+                            "to-number",
+                            ["coalesce", ["get", "hazardOffY"], 0],
+                        ],
+                    ],
                     "icon-size": 1.0,
                 },
                 "metadata": {"maplibre:s52": "UDWHAZ-hazardIcon"},

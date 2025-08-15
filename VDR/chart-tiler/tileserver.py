@@ -79,7 +79,7 @@ _symbols = parse_symbols(_root)
 
 @lru_cache(maxsize=32)
 def _get_classifier(sc: float) -> S52PreClassifier:
-    return S52PreClassifier(sc, _day_colors, _symbols)
+    return S52PreClassifier(sc, _day_colors, symbols=_symbols)
 
 
 @lru_cache(maxsize=512)
