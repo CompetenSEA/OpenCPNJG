@@ -30,7 +30,7 @@ except Exception:  # pragma: no cover
 
 from datasource_stub import features_for_tile
 from mvt_builder import encode_mvt
-from s52_preclass import S52PreClassifier
+from s52_preclass import S52PreClassifier, ContourConfig
 
 # Allow importing parsing helpers
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server-styling"))
@@ -56,8 +56,8 @@ PNG_1X1 = base64.b64decode(
 )
 
 
-def _cache_key(fmt: str, sc: float, z: int, x: int, y: int) -> str:
-    return f"{fmt}:{sc}:{z}/{x}/{y}"
+def _cache_key(fmt: str, cfg: ContourConfig, z: int, x: int, y: int) -> str:
+    return f"{fmt}:{cfg.safety},{cfg.shallow},{cfg.deep}:{z}/{x}/{y}"
 
 
 def _tile_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
@@ -75,19 +75,20 @@ _chartsymbols_path = STYLING_DIST / "assets" / "s52" / "chartsymbols.xml"
 _root = ET.parse(_chartsymbols_path).getroot()
 _day_colors = parse_day_colors(_root)
 _symbols = parse_symbols(_root)
+DEFAULT_CONFIG = ContourConfig()
 
 
 @lru_cache(maxsize=32)
-def _get_classifier(sc: float) -> S52PreClassifier:
-    return S52PreClassifier(sc, _day_colors, symbols=_symbols)
+def _get_classifier(cfg: ContourConfig) -> S52PreClassifier:
+    return S52PreClassifier(cfg, _day_colors, symbols=_symbols)
 
 
 @lru_cache(maxsize=512)
-def _render_mvt(sc: float, z: int, x: int, y: int) -> bytes:
+def _render_mvt(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
     """Build a Mapbox Vector Tile for the requested tile."""
 
     bbox = _tile_bbox(z, x, y)
-    classifier = _get_classifier(sc)
+    classifier = _get_classifier(cfg)
 
     feats = []
     for feat in features_for_tile(bbox, z, x, y):
@@ -101,8 +102,8 @@ def _render_mvt(sc: float, z: int, x: int, y: int) -> bytes:
 
 
 @lru_cache(maxsize=512)
-def _render_png(sc: float, z: int, x: int, y: int) -> bytes:  # pragma: no cover - trivial
-    _ = (sc, z, x, y)  # unused, but part of cache key
+def _render_png(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:  # pragma: no cover - trivial
+    _ = (cfg, z, x, y)  # unused, but part of cache key
     return PNG_1X1
 
 
@@ -121,20 +122,57 @@ def _set_redis(key: str, value: bytes) -> None:  # pragma: no cover - depends on
 
 
 @app.get("/tiles/cm93/{z}/{x}/{y}.png")
-def tiles_png(z: int, x: int, y: str, sc: float = 0.0) -> Response:
+def tiles_png(
+    z: int,
+    x: int,
+    y: str,
+    sc: float | None = None,
+    safety: float | None = None,
+    shallow: float | None = None,
+    deep: float | None = None,
+) -> Response:
     """Serve raster PNG tiles."""
 
     try:
         y_int = int(y)
     except ValueError:
         return Response(status_code=422)
-    return tiles(z, x, y_int, fmt="png", sc=sc)
+    return tiles(
+        z,
+        x,
+        y_int,
+        fmt="png",
+        sc=sc,
+        safety=safety,
+        shallow=shallow,
+        deep=deep,
+    )
 
 
 @app.get("/tiles/cm93/{z}/{x}/{y}")
-def tiles(z: int, x: int, y: int, fmt: str = "mvt", sc: float = 0.0) -> Response:
+def tiles(
+    z: int,
+    x: int,
+    y: int,
+    fmt: str = "mvt",
+    sc: float | None = None,
+    safety: float | None = None,
+    shallow: float | None = None,
+    deep: float | None = None,
+) -> Response:
     start = time.perf_counter()
-    key = _cache_key(fmt, sc, z, x, y)
+    if safety is not None or shallow is not None or deep is not None:
+        cfg = ContourConfig(
+            safety=safety if safety is not None else DEFAULT_CONFIG.safety,
+            shallow=shallow if shallow is not None else DEFAULT_CONFIG.shallow,
+            deep=deep if deep is not None else DEFAULT_CONFIG.deep,
+        )
+    elif sc is not None:
+        cfg = ContourConfig(safety=sc, shallow=sc, deep=sc)
+    else:
+        cfg = DEFAULT_CONFIG
+
+    key = _cache_key(fmt, cfg, z, x, y)
     cached = _get_from_redis(key)
     cache_state = "hit" if cached is not None else "miss"
     if cached is not None:
@@ -143,7 +181,7 @@ def tiles(z: int, x: int, y: int, fmt: str = "mvt", sc: float = 0.0) -> Response
         logger.info(
             "fmt=%s sc=%s z=%d x=%d y=%d cache=%s ms=%.2f",
             fmt,
-            sc,
+            cfg.safety,
             z,
             x,
             y,
@@ -156,12 +194,12 @@ def tiles(z: int, x: int, y: int, fmt: str = "mvt", sc: float = 0.0) -> Response
 
     if fmt == "png":
         before = _render_png.cache_info().hits
-        data = _render_png(sc, z, x, y)
+        data = _render_png(cfg, z, x, y)
         after = _render_png.cache_info().hits
         media_type = "image/png"
     else:
         before = _render_mvt.cache_info().hits
-        data = _render_mvt(sc, z, x, y)
+        data = _render_mvt(cfg, z, x, y)
         after = _render_mvt.cache_info().hits
         media_type = "application/x-protobuf"
     if after > before:
@@ -173,7 +211,7 @@ def tiles(z: int, x: int, y: int, fmt: str = "mvt", sc: float = 0.0) -> Response
     logger.info(
         "fmt=%s sc=%s z=%d x=%d y=%d cache=%s ms=%.2f",
         fmt,
-        sc,
+        cfg.safety,
         z,
         x,
         y,
@@ -181,6 +219,13 @@ def tiles(z: int, x: int, y: int, fmt: str = "mvt", sc: float = 0.0) -> Response
         duration_ms,
     )
     return Response(content=data, media_type=media_type, headers={"X-Tile-Cache": cache_state})
+
+
+@app.get("/config/contours")
+def get_contours_config() -> Dict[str, float | None]:
+    from dataclasses import asdict
+
+    return asdict(DEFAULT_CONFIG)
 
 
 @app.get("/style/s52.day.json")

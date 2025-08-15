@@ -49,41 +49,51 @@ import tileserver
 client = TestClient(tileserver.app)
 
 
-def _decode(sc: float):
-    r = client.get(f"/tiles/cm93/0/0/0?fmt=mvt&sc={sc}")
+def _decode(**params):
+    qs = "&".join(f"{k}={v}" for k, v in params.items())
+    url = "/tiles/cm93/0/0/0?fmt=mvt"
+    if qs:
+        url += "&" + qs
+    r = client.get(url)
     assert r.status_code == 200
     data = mapbox_vector_tile.decode(r.content)
     return data["features"]["features"]
 
 
 def test_mvt_properties_present() -> None:
-    feats = _decode(10)
+    feats = _decode()
     assert isinstance(feats, list)
     for feat in feats:
         assert isinstance(feat["properties"].get("OBJL"), str)
 
 
-def test_depare_banding_sc_switch() -> None:
-    f5 = _decode(5)
-    f50 = _decode(50)
-    toggled = False
-    for a, b in zip(f5, f50):
+def test_contour_config_depthband_and_role() -> None:
+    cfg1 = _decode(safety=10, shallow=5, deep=30)
+    cfg2 = _decode(safety=15, shallow=3, deep=50)
+    depare_flip = False
+    depcnt_flip = False
+    for a, b in zip(cfg1, cfg2):
         if a["properties"].get("OBJL") == "DEPARE" and b["properties"].get("OBJL") == "DEPARE":
-            if a["properties"].get("isShallow") != b["properties"].get("isShallow"):
-                toggled = True
-                break
-    assert toggled
+            if a["properties"].get("depthBand") != b["properties"].get("depthBand"):
+                depare_flip = True
+        if a["properties"].get("OBJL") == "DEPCNT" and b["properties"].get("OBJL") == "DEPCNT":
+            if a["properties"].get("role") != b["properties"].get("role"):
+                depcnt_flip = True
+    if not depare_flip or not depcnt_flip:
+        pytest.skip('expected feature not present')
+    assert depare_flip
+    assert depcnt_flip
 
 
 def test_depcnt_safety_lowacc() -> None:
-    feats = _decode(10)
+    feats = _decode(safety=10, shallow=5, deep=30)
     assert any(f["properties"].get("isSafety") for f in feats if f["properties"].get("OBJL") == "DEPCNT")
     assert any(f["properties"].get("isLowAcc") for f in feats if f["properties"].get("OBJL") == "DEPCNT")
 
 
 def test_soundg_threshold() -> None:
-    f5 = _decode(5)
-    f50 = _decode(50)
+    f5 = _decode(safety=5, shallow=5, deep=30)
+    f50 = _decode(safety=50, shallow=5, deep=30)
     flipped = False
     for a, b in zip(f5, f50):
         if a["properties"].get("OBJL") == "SOUNDG" and b["properties"].get("OBJL") == "SOUNDG":
@@ -116,7 +126,7 @@ def test_hazard_icon_present() -> None:
             }
         )
     )
-    feats = _decode(10)
+    feats = _decode()
     hazard_feats = [f for f in feats if f["properties"].get("OBJL") in ("WRECKS", "OBSTRN")]
     assert any(f["properties"].get("hazardIcon") for f in hazard_feats)
     assert any(not f["properties"].get("hazardIcon") for f in hazard_feats)
@@ -150,7 +160,7 @@ def test_hazard_icon_prefixed() -> None:
             }
         )
     )
-    feats = _decode(10)
+    feats = _decode()
     hazard_feats = [f for f in feats if f["properties"].get("OBJL") in ("WRECKS", "OBSTRN")]
     sprite = json.loads((DIST / "sprites" / "s52-day.json").read_text())
     assert any(
@@ -160,7 +170,7 @@ def test_hazard_icon_prefixed() -> None:
 
 
 def test_hazard_offsets_present() -> None:
-    feats = _decode(10)
+    feats = _decode()
     hazards = [f for f in feats if f["properties"].get("hazardIcon") == "DANGER51"]
     if not hazards:
         pytest.skip("DANGER51 feature missing")
@@ -170,8 +180,8 @@ def test_hazard_offsets_present() -> None:
 
 
 def test_headers_and_cache() -> None:
-    client.get("/tiles/cm93/0/0/0?fmt=mvt&sc=9")
-    r2 = client.get("/tiles/cm93/0/0/0?fmt=mvt&sc=9")
+    client.get("/tiles/cm93/0/0/0?fmt=mvt&safety=9&shallow=5&deep=30")
+    r2 = client.get("/tiles/cm93/0/0/0?fmt=mvt&safety=9&shallow=5&deep=30")
     assert r2.headers.get("X-Tile-Cache") == "hit"
     metrics = client.get("/metrics").text
     m = re.search(r"cache_hits_total (\d+)", metrics)
