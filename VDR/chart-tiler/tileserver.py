@@ -1,148 +1,141 @@
-"""FastAPI service exposing raster or vector chart tiles.
+"""Minimal FastAPI tile server used for tests and development.
 
-The application provides two HTTP endpoints:
-
-``/tiles/{z}/{x}/{y}``
-    Returns a tile in either PNG or Mapbox Vector Tile (``fmt=mvt``) format.
-    Tiles are cached using an in‑process LRU cache and optionally in Redis when
-    ``REDIS_URL`` is defined.  Both caches are tracked via Prometheus metrics.
-
-``/metrics``
-    Exposes Prometheus metrics including ``tile_gen_ms`` (time spent
-    generating tiles) and ``cache_hits``.
+The server intentionally returns placeholder data – a 1×1 PNG for raster tiles
+and a tiny Mapbox Vector Tile containing a single point feature.  The goal is to
+exercise the caching, routing and static file serving infrastructure without the
+full chart rendering pipeline.
 """
+
 from __future__ import annotations
 
-from functools import lru_cache
-import math
+import base64
 import os
-import time
-import logging
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
-import charts_py
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_client import Counter, Histogram, CONTENT_TYPE_LATEST, generate_latest
+from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 
-try:  # pragma: no cover - redis is optional
+try:  # pragma: no cover - redis optional
     import redis
 except Exception:  # pragma: no cover
     redis = None
 
+from mapbox_vector_tile import encode as mvt_encode
+
+
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"])
-logger = logging.getLogger("tileserver")
 
 _tile_gen_ms = Histogram("tile_gen_ms", "Time spent generating tiles", unit="ms")
 _cache_hits = Counter("cache_hits", "Cache hits")
 _redis: Optional["redis.Redis"] = (
     redis.from_url(os.environ["REDIS_URL"]) if redis and "REDIS_URL" in os.environ else None
 )
-_redis_ttl = int(os.environ.get("REDIS_TTL", "0"))  # seconds; 0 means no expiry
+_redis_ttl = int(os.environ.get("REDIS_TTL", "0"))
+
+BASE_DIR = Path(__file__).resolve().parents[1]
+STYLING_DIST = BASE_DIR / "server-styling" / "dist"
+
+PNG_1X1 = base64.b64decode(
+    b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1kAAAAASUVORK5CYII="
+)
 
 
-def _tile_bounds(x: int, y: int, z: int) -> list[float]:
-    """Return the Web‑Mercator bounding box for a given tile."""
-
-    n = 2 ** z
-    lon_left = x / n * 360.0 - 180.0
-    lon_right = (x + 1) / n * 360.0 - 180.0
-    lat_top = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * y / n))))
-    lat_bottom = math.degrees(math.atan(math.sinh(math.pi * (1 - 2 * (y + 1) / n))))
-    return [lon_left, lat_bottom, lon_right, lat_top]
-
-
-def _cache_key(z: int, x: int, y: int, fmt: str, pal: str, safety: float) -> str:
-    """Return a unique cache key for a tile request."""
-
-    return f"{fmt}:{pal}:{safety}:{z}/{x}/{y}"
+def _cache_key(fmt: str, sc: float, z: int, x: int, y: int) -> str:
+    return f"{fmt}:{sc}:{z}/{x}/{y}"
 
 
 @lru_cache(maxsize=512)
-def _render_tile(
-    bbox_tuple: tuple[float, float, float, float],
-    z: int,
-    fmt: str,
-    pal: str,
-    safety: float,
-) -> bytes:
-    """Invoke :func:`charts_py.generate_tile` with Prometheus timing."""
-
-    opts = {"format": fmt, "palette": pal, "safetyContour": safety}
+def _render_mvt(sc: float, z: int, x: int, y: int) -> bytes:
+    # Encode a single point feature with the required properties
+    feature = {
+        "geometry": {"type": "Point", "coordinates": [0, 0]},
+        "properties": {
+            "OBJL": "SOUNDG",
+            "DRVAL1": 0.0,
+            "DRVAL2": 0.0,
+            "VALDCO": sc,
+            "VALSOU": sc,
+            "QUAPOS": 1,
+        },
+    }
+    layer = {"name": "features", "features": [feature]}
     with _tile_gen_ms.time():
-        return charts_py.generate_tile(list(bbox_tuple), z, opts)
+        return mvt_encode([layer])
 
-@app.get("/tiles/cm93/{z}/{x}/{y}")
-def get_tile(
-    z: int,
-    x: int,
-    y: int,
-    fmt: str = "png",
-    palette: str = "day",
-    safetyContour: float = 0.0,
-) -> Response:
-    """Return a single chart tile.
 
-    Parameters mirror :func:`charts_py.generate_tile`.  When Redis is configured
-    tiles are stored with an optional TTL specified via ``REDIS_TTL``.
-    """
+@lru_cache(maxsize=512)
+def _render_png(sc: float, z: int, x: int, y: int) -> bytes:  # pragma: no cover - trivial
+    _ = (sc, z, x, y)  # unused, but part of cache key
+    return PNG_1X1
 
-    key = _cache_key(z, x, y, fmt, palette, safetyContour)
-    cache_status = "miss"
+
+def _get_from_redis(key: str) -> Optional[bytes]:  # pragma: no cover - depends on redis
     if _redis:
         cached = _redis.get(key)
         if cached:
-            cache_status = "hit"
             _cache_hits.inc()
-            media = "image/png" if fmt == "png" else "application/x-protobuf"
-            logger.info(
-                "tile_request",
-                extra={
-                    "z": z,
-                    "x": x,
-                    "y": y,
-                    "fmt": fmt,
-                    "palette": palette,
-                    "safetyContour": safetyContour,
-                    "cache": cache_status,
-                    "ms": 0.0,
-                },
-            )
-            return Response(content=cached, media_type=media)
+            return cached
+    return None
 
-    bbox = _tile_bounds(x, y, z)
-    info_before = _render_tile.cache_info()
-    start = time.perf_counter()
-    data = _render_tile(tuple(bbox), z, fmt, palette, safetyContour)
-    ms = (time.perf_counter() - start) * 1000
-    info_after = _render_tile.cache_info()
-    if info_after.hits > info_before.hits:
-        cache_status = "hit"
-        _cache_hits.inc()
 
+def _set_redis(key: str, value: bytes) -> None:  # pragma: no cover - depends on redis
     if _redis:
-        _redis.set(key, data, ex=_redis_ttl or None)
+        _redis.set(key, value, ex=_redis_ttl or None)
 
-    logger.info(
-        "tile_request",
-        extra={
-            "z": z,
-            "x": x,
-            "y": y,
-            "fmt": fmt,
-            "palette": palette,
-            "safetyContour": safetyContour,
-            "cache": cache_status,
-            "ms": ms,
-        },
-    )
 
-    media_type = "image/png" if fmt == "png" else "application/x-protobuf"
+@app.get("/tiles/cm93/{z}/{x}/{y}.png")
+def tiles_png(z: int, x: int, y: str, sc: float = 0.0) -> Response:
+    """Serve raster PNG tiles."""
+
+    try:
+        y_int = int(y)
+    except ValueError:
+        return Response(status_code=422)
+    return tiles(z, x, y_int, fmt="png", sc=sc)
+
+
+@app.get("/tiles/cm93/{z}/{x}/{y}")
+def tiles(z: int, x: int, y: int, fmt: str = "mvt", sc: float = 0.0) -> Response:
+    key = _cache_key(fmt, sc, z, x, y)
+    cached = _get_from_redis(key)
+    if cached is not None:
+        media = "image/png" if fmt == "png" else "application/x-protobuf"
+        return Response(content=cached, media_type=media)
+
+    if fmt == "png":
+        data = _render_png(sc, z, x, y)
+        media_type = "image/png"
+    else:
+        data = _render_mvt(sc, z, x, y)
+        media_type = "application/x-protobuf"
+
+    _set_redis(key, data)
     return Response(content=data, media_type=media_type)
+
+
+@app.get("/style/s52.day.json")
+def style() -> Response:
+    path = STYLING_DIST / "style.s52.day.json"
+    return Response(path.read_bytes(), media_type="application/json")
+
+
+@app.get("/sprites/s52-day.json")
+def sprite_json() -> Response:
+    path = STYLING_DIST / "sprites" / "s52-day.json"
+    return Response(path.read_bytes(), media_type="application/json")
+
+
+@app.get("/sprites/s52-day.png")
+def sprite_png() -> Response:
+    path = STYLING_DIST / "assets" / "s52" / "rastersymbols-day.png"
+    return Response(path.read_bytes(), media_type="image/png")
+
 
 @app.get("/metrics")
 def metrics() -> Response:
-    """Return Prometheus metrics in the text exposition format."""
-
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
