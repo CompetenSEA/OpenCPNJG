@@ -5,5 +5,6 @@ import charts_py
 
 def test_generate_tile():
     charts_py.load_cell("dummy_cell.dat")
-    data = charts_py.generate_tile([0.0, 0.0, 1.0, 1.0], 0, fmt="png")
+    opts = {"format": "png", "palette": "day", "safetyContour": 0.0}
+    data = charts_py.generate_tile([0.0, 0.0, 1.0, 1.0], 0, opts)
     assert data.startswith(b"\x89PNG")

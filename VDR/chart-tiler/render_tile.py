@@ -16,7 +16,8 @@ def tile_bounds(x: int, y: int, z: int) -> list[float]:
 
 def main(z: int, x: int, y: int, output: Path) -> None:
     bbox = tile_bounds(x, y, z)
-    data = charts_py.generate_tile(bbox, z, fmt="png")
+    opts = {"format": "png", "palette": "day", "safetyContour": 0.0}
+    data = charts_py.generate_tile(bbox, z, opts)
     output.write_bytes(data)
 
 if __name__ == "__main__":

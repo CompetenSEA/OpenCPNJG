@@ -1,0 +1,7 @@
+[
+  {"feature": "LNDARE", "color": "LANDA", "type": "fill"},
+  {"feature": "DEPARE", "color": "DEPIT1", "type": "fill"},
+  {"feature": "COALNE", "color": "CHBLK", "type": "line"},
+  {"feature": "DEPCNT", "color": "CHBLK", "type": "line"},
+  {"feature": "SOUNDG", "color": "CHBLK", "type": "symbol"}
+]

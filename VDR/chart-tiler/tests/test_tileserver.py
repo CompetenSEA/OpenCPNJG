@@ -9,7 +9,7 @@ import tileserver
 client = TestClient(tileserver.app)
 
 def test_tile_endpoint_png():
-    r = client.get("/tiles/0/0/0?fmt=png")
+    r = client.get("/tiles/cm93/0/0/0?fmt=png")
     assert r.status_code == 200
     assert r.content.startswith(b"\x89PNG")
 

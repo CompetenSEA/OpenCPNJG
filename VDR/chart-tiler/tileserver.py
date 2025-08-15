@@ -15,6 +15,7 @@ import math
 import os
 import charts_py
 from fastapi import FastAPI, Response
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import Counter, Histogram, CONTENT_TYPE_LATEST, generate_latest
 
 try:  # pragma: no cover - redis is optional
@@ -23,6 +24,7 @@ except Exception:  # pragma: no cover
     redis = None
 
 app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"])
 
 _tile_gen_ms = Histogram("tile_gen_ms", "Time spent generating tiles", unit="ms")
 _cache_hits = Counter("cache_hits", "Cache hits")
@@ -41,10 +43,11 @@ def _cache_key(z: int, x: int, y: int, fmt: str, pal: str) -> str:
 
 @lru_cache(maxsize=512)
 def _render_tile(bbox_tuple: tuple[float, float, float, float], z: int, fmt: str, pal: str) -> bytes:
+    opts = {"format": fmt, "palette": pal, "safetyContour": 0.0}
     with _tile_gen_ms.time():
-        return charts_py.generate_tile(list(bbox_tuple), z, fmt=fmt, palette=pal)
+        return charts_py.generate_tile(list(bbox_tuple), z, opts)
 
-@app.get("/tiles/{z}/{x}/{y}")
+@app.get("/tiles/cm93/{z}/{x}/{y}")
 def get_tile(z: int, x: int, y: int, fmt: str = "png", pal: str = "day") -> Response:
     key = _cache_key(z, x, y, fmt, pal)
     if _redis:

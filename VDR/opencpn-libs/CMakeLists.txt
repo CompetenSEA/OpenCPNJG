@@ -3,6 +3,7 @@ project(opencpn_charts LANGUAGES CXX)
 
 add_library(charts SHARED
     src/charts.cpp
+    src/libcharts_api.cpp
     src/cm93/dummy.cpp
     src/s57chart/dummy.cpp
     src/ps52plib/dummy.cpp
