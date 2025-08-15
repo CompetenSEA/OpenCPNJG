@@ -42,7 +42,8 @@ jobs:
             --output VDR/server-styling/dist/style.s52.day.json
       - name: Validate style
         run: |
-          npx @maplibre/maplibre-gl-style-spec@latest validate VDR/server-styling/dist/style.s52.day.json
+          npm install --no-save @maplibre/maplibre-gl-style-spec
+          node VDR/server-styling/tools/validate_style.mjs VDR/server-styling/dist/style.s52.day.json
       - name: Coverage summary
         run: |
           python VDR/server-styling/s52_coverage.py --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml

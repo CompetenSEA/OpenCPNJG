@@ -213,8 +213,15 @@ def build_layers(
                     ["literal", ["OBSTRN", "WRECKS", "UWTROC", "ROCKS"]],
                 ],
                 "layout": {
-                    "icon-image": ["coalesce", ["get", "hazardIcon"], ""],
+                    "icon-image": [
+                        "case",
+                        ["has", "hazardIcon"],
+                        ["concat", "{SPRITE_PREFIX}", ["get", "hazardIcon"]],
+                        "",
+                    ],
                     "icon-allow-overlap": True,
+                    "icon-anchor": "center",
+                    "icon-offset": [0, 0],
                     "icon-size": 1.0,
                 },
                 "metadata": {"maplibre:s52": "UDWHAZ-hazardIcon"},
@@ -248,10 +255,10 @@ def build_layers(
                             ["to-number", ["coalesce", ["get", "VALSOU"], ["get", "VAL"]]],
                             sc,
                         ],
-                        "#353535",
-                        "#FFFFFF",
+                        get_colour(colors, "SNDG1", "#353535"),
+                        get_colour(colors, "SNDG2", "#FFFFFF"),
                     ],
-                    "text-halo-color": "#FFFFFF",
+                    "text-halo-color": get_colour(colors, "SNDG2", "#FFFFFF"),
                     "text-halo-width": 1,
                 },
                 "metadata": {"maplibre:s52": "SOUNDG"},
@@ -277,6 +284,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sprite-base", required=True, help="Sprite base URL")
     p.add_argument("--glyphs", required=True, help="Glyphs URL template")
     p.add_argument("--safety-contour", type=float, default=0.0)
+    p.add_argument("--sprite-prefix", default="", help="Prefix for sprite names")
     p.add_argument("--output", type=Path, required=True)
     return p.parse_args()
 
@@ -318,7 +326,9 @@ def main() -> None:  # pragma: no cover - CLI wrapper
             _fail(f"Layer {lyr['id']} missing paint/layout")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(style, indent=2, sort_keys=True))
+    style_json = json.dumps(style, indent=2, sort_keys=True)
+    style_json = style_json.replace("{SPRITE_PREFIX}", args.sprite_prefix)
+    args.output.write_text(style_json)
     print(f"Wrote style with {len(layers)} layers to {args.output}")
 
 

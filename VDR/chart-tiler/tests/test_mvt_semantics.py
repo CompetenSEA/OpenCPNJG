@@ -126,6 +126,38 @@ def test_hazard_icon_present() -> None:
             assert icon in sprite
 
 
+def test_hazard_icon_prefixed() -> None:
+    (DIST / "sprites" / "s52-day.json").write_text(
+        json.dumps(
+            {
+                "s52-ISODGR51": {
+                    "x": 0,
+                    "y": 0,
+                    "width": 1,
+                    "height": 1,
+                    "pixelRatio": 1,
+                    "sdf": False,
+                },
+                "s52-DANGER51": {
+                    "x": 1,
+                    "y": 0,
+                    "width": 1,
+                    "height": 1,
+                    "pixelRatio": 1,
+                    "sdf": False,
+                },
+            }
+        )
+    )
+    feats = _decode(10)
+    hazard_feats = [f for f in feats if f["properties"].get("OBJL") in ("WRECKS", "OBSTRN")]
+    sprite = json.loads((DIST / "sprites" / "s52-day.json").read_text())
+    assert any(
+        f["properties"].get("hazardIcon") and f"s52-{f['properties']['hazardIcon']}" in sprite
+        for f in hazard_feats
+    )
+
+
 def test_headers_and_cache() -> None:
     client.get("/tiles/cm93/0/0/0?fmt=mvt&sc=9")
     r2 = client.get("/tiles/cm93/0/0/0?fmt=mvt&sc=9")
