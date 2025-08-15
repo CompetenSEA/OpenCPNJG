@@ -41,6 +41,11 @@ DIST = ROOT.parent / "server-styling" / "dist"
         b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/woAAgMBgNwK9+wAAAAASUVORK5CYII="
     )
 )
+# Minimal chartsymbols.xml for color parsing
+(DIST / "assets" / "s52" / "chartsymbols.xml").write_text(
+    "<root><color-table name='DAY_BRIGHT'><color name='DEPVS' r='1' g='2' b='3'/>"
+    "<color name='DEPDW' r='4' g='5' b='6'/></color-table></root>"
+)
 
 import tileserver
 

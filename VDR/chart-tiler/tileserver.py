@@ -10,11 +10,13 @@ from __future__ import annotations
 
 import base64
 import logging
+import math
 import os
 import time
+import xml.etree.ElementTree as ET
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,7 +27,9 @@ try:  # pragma: no cover - redis optional
 except Exception:  # pragma: no cover
     redis = None
 
-from mapbox_vector_tile import encode as mvt_encode
+from datasource_stub import features_for_tile
+from mvt_builder import encode_mvt
+from s52_preclass import S52PreClassifier
 
 
 app = FastAPI()
@@ -51,23 +55,61 @@ def _cache_key(fmt: str, sc: float, z: int, x: int, y: int) -> str:
     return f"{fmt}:{sc}:{z}/{x}/{y}"
 
 
+def _parse_day_colors(path: Path) -> Dict[str, str]:
+    tree = ET.parse(path)
+    root = tree.getroot()
+    table = root.find(".//color-table[@name='DAY_BRIGHT']")
+    colours: Dict[str, str] = {}
+    if table is not None:
+        for elem in table.findall("color"):
+            name = elem.get("name")
+            r = elem.get("r")
+            g = elem.get("g")
+            b = elem.get("b")
+            if name and r and g and b:
+                try:
+                    colours[name] = f"#{int(r):02x}{int(g):02x}{int(b):02x}"
+                except ValueError:
+                    continue
+    return colours
+
+
+def _tile_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
+    n = 2.0 ** z
+    lon_left = x / n * 360.0 - 180.0
+    lon_right = (x + 1) / n * 360.0 - 180.0
+    lat_top = math.degrees(math.atan(math.sinh(math.pi - 2.0 * math.pi * y / n)))
+    lat_bottom = math.degrees(
+        math.atan(math.sinh(math.pi - 2.0 * math.pi * (y + 1) / n))
+    )
+    return lon_left, lat_bottom, lon_right, lat_top
+
+
+_chartsymbols_path = STYLING_DIST / "assets" / "s52" / "chartsymbols.xml"
+_day_colors = _parse_day_colors(_chartsymbols_path)
+
+
+@lru_cache(maxsize=32)
+def _get_classifier(sc: float) -> S52PreClassifier:
+    return S52PreClassifier(str(_chartsymbols_path), sc, _day_colors)
+
+
 @lru_cache(maxsize=512)
 def _render_mvt(sc: float, z: int, x: int, y: int) -> bytes:
-    # Encode a single point feature with the required properties
-    feature = {
-        "geometry": {"type": "Point", "coordinates": [0, 0]},
-        "properties": {
-            "OBJL": "SOUNDG",
-            "DRVAL1": 0.0,
-            "DRVAL2": 0.0,
-            "VALDCO": sc,
-            "VALSOU": sc,
-            "QUAPOS": 1,
-        },
-    }
-    layer = {"name": "features", "features": [feature]}
+    """Build a Mapbox Vector Tile for the requested tile."""
+
+    bbox = _tile_bbox(z, x, y)
+    classifier = _get_classifier(sc)
+
+    feats = []
+    for feat in features_for_tile(bbox, z, x, y):
+        props = dict(feat.get("properties", {}))
+        objl = props.get("OBJL", "")
+        props.update(classifier.classify(objl, props))
+        feats.append({"geometry": feat["geometry"], "properties": props})
+
     with _tile_gen_ms.time():
-        return mvt_encode([layer])
+        return encode_mvt(feats)
 
 
 @lru_cache(maxsize=512)
@@ -120,14 +162,23 @@ def tiles(z: int, x: int, y: int, fmt: str = "mvt", sc: float = 0.0) -> Response
             cache_state,
             duration_ms,
         )
-        return Response(content=cached, media_type=media)
+        return Response(
+            content=cached, media_type=media, headers={"X-Tile-Cache": cache_state}
+        )
 
     if fmt == "png":
+        before = _render_png.cache_info().hits
         data = _render_png(sc, z, x, y)
+        after = _render_png.cache_info().hits
         media_type = "image/png"
     else:
+        before = _render_mvt.cache_info().hits
         data = _render_mvt(sc, z, x, y)
+        after = _render_mvt.cache_info().hits
         media_type = "application/x-protobuf"
+    if after > before:
+        cache_state = "hit"
+        _cache_hits.inc()
 
     _set_redis(key, data)
     duration_ms = (time.perf_counter() - start) * 1000
@@ -141,7 +192,7 @@ def tiles(z: int, x: int, y: int, fmt: str = "mvt", sc: float = 0.0) -> Response
         cache_state,
         duration_ms,
     )
-    return Response(content=data, media_type=media_type)
+    return Response(content=data, media_type=media_type, headers={"X-Tile-Cache": cache_state})
 
 
 @app.get("/style/s52.day.json")

@@ -85,6 +85,9 @@ def build_layers(
 
     layers: List[tuple[int, Dict[str, object]]] = []
 
+    if "DEPVS" not in colors:
+        print("Warning: DEPVS missing, using DEPIT1", file=sys.stderr)
+
     def prio(obj: str, default: int) -> int:
         return priorities.get(obj, default)
 
@@ -102,6 +105,7 @@ def build_layers(
                     "fill-color": get_colour(colors, "LANDA"),
                     "fill-outline-color": get_colour(colors, "CHBLK"),
                 },
+                "metadata": {"maplibre:s52": "LNDARE-LANDA"},
             },
         )
     )
@@ -121,6 +125,7 @@ def build_layers(
                     ["<", ["coalesce", ["get", "DRVAL2"], ["get", "DRVAL1"], 99999], sc],
                 ],
                 "paint": {"fill-color": get_colour(colors, "DEPVS", "DEPIT1")},
+                "metadata": {"maplibre:s52": "DEPARE-DEPVS"},
             },
         )
     )
@@ -142,6 +147,7 @@ def build_layers(
                     ],
                 ],
                 "paint": {"fill-color": get_colour(colors, "DEPDW")},
+                "metadata": {"maplibre:s52": "DEPARE-DEPDW"},
             },
         )
     )
@@ -157,6 +163,7 @@ def build_layers(
                 "source-layer": source_layer,
                 "filter": ["==", ["get", "OBJL"], "DEPCNT"],
                 "paint": {"line-color": get_colour(colors, "DEPCN"), "line-width": 1},
+                "metadata": {"maplibre:s52": "DEPCNT-DEPCN"},
             },
         )
     )
@@ -178,6 +185,7 @@ def build_layers(
                     "line-width": 1,
                     "line-dasharray": [2, 2],
                 },
+                "metadata": {"maplibre:s52": "DEPCNT-QUAPOS>=2"},
             },
         )
     )
@@ -198,6 +206,7 @@ def build_layers(
                     "line-color": get_colour(colors, "DEPSC"),
                     "line-width": 2,
                 },
+                "metadata": {"maplibre:s52": "DEPCNT-VALDCO==sc"},
             },
         )
     )
@@ -216,6 +225,7 @@ def build_layers(
                     "line-color": get_colour(colors, "CHBLK"),
                     "line-width": 1,
                 },
+                "metadata": {"maplibre:s52": "COALNE-CHBLK"},
             },
         )
     )
@@ -248,6 +258,7 @@ def build_layers(
                     "text-halo-color": "#ffffff",
                     "text-halo-width": 1,
                 },
+                "metadata": {"maplibre:s52": "SOUNDG"},
             },
         )
     )
