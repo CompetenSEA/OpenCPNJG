@@ -1,0 +1,7 @@
+chart-tiler/charts.sqlite
+chart-tiler/*.sqlite
+chart-tiler/tests/*.png
+chart-tiler/tests/*.mbtiles
+chart-tiler/tests/*.tif
+testdata/*
+!testdata/README.md
