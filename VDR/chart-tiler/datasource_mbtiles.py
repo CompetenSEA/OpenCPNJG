@@ -51,10 +51,12 @@ class MBTilesDataSource:
     # -- tiles ------------------------------------------------------------
     @staticmethod
     def _xyz_to_tms(z: int, y: int) -> int:
+        """Convert XYZ tile row to TMS."""
         return (2 ** z - 1) - y
 
     @staticmethod
     def _tms_to_xyz(z: int, y: int) -> int:
+        """Convert TMS tile row to XYZ."""
         return (2 ** z - 1) - y
 
     def _get_tile_uncached(self, z: int, x: int, y: int) -> Optional[bytes]:

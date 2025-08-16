@@ -11,7 +11,7 @@ End‑to‑end pipeline for nautical charts.  ENC, CM93 and GeoTIFF sources are 
 
 ## Quickstart
 ```bash
-# GeoTIFF → COG + sidecar
+# GeoTIFF → COG
 python VDR/chart-tiler/tools/convert_geotiff.py input.tif --out-dir VDR/chart-tiler/data/geotiff
 
 # Registry scan
@@ -25,14 +25,4 @@ npm test --prefix VDR/web-client
 ```
 Artefacts are written under `chart-tiler/data/*` and `server-styling/dist/*`.
 
-## Testing
-```
-pytest VDR/chart-tiler/tests/test_convert_geotiff.py
-pytest VDR/chart-tiler/tests/test_registry_scan.py
-pytest VDR/chart-tiler/tests/test_tiles_geotiff.py
-npm test --prefix VDR/web-client
-# optional
-pytest VDR/server-styling/tests
-```
-
-See `docs/map_pipeline.md` for full pipeline and database guidance.
+See `docs/map_pipeline.md` for the full pipeline, database schema and testing matrix.

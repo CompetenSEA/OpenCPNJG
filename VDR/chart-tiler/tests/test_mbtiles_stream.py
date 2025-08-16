@@ -54,6 +54,8 @@ def test_mbtiles_stream(tmp_path, monkeypatch):
     assert r.status_code == 200
     assert r.content == tile
     assert r.headers['content-type'] == 'application/x-protobuf'
+    assert 'ETag' in r.headers
+    assert r.headers['Cache-Control'] == 'public, max-age=60'
     # add second dataset
     _make_mbtiles(tmp_path / 'two.mbtiles', tile)
     r2 = client.get('/tiles/enc/0/0/0?fmt=mvt')
@@ -61,3 +63,7 @@ def test_mbtiles_stream(tmp_path, monkeypatch):
     r3 = client.get('/tiles/enc/one/0/0/0?fmt=mvt')
     assert r3.status_code == 200
     assert r3.content == tile
+    r4 = client.get('/tiles/enc/one/0/0/0?fmt=png')
+    assert r4.status_code == 415
+    r5 = client.get('/tiles/enc/one/0/0/99?fmt=mvt')
+    assert r5.status_code == 422

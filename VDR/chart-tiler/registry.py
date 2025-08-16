@@ -258,7 +258,7 @@ def _scan_enc(dir_path: Path) -> List[Dataset]:
 
 
 def list_datasets(enc_dir: Optional[Path] = None) -> List[Dataset]:
-    """List ENC datasets under ``enc_dir`` (cached by directory mtime)."""
+    """List ENC datasets (cached by directory mtime)."""
 
     dir_path = _enc_dir(enc_dir)
     dir_path.mkdir(parents=True, exist_ok=True)
@@ -270,7 +270,7 @@ def list_datasets(enc_dir: Optional[Path] = None) -> List[Dataset]:
 
 
 def get_dataset(ds_id: str, enc_dir: Optional[Path] = None) -> Dataset | None:
-    """Return dataset with ``ds_id`` or ``None`` if missing."""
+    """Return dataset by id or ``None`` if missing."""
 
     for ds in list_datasets(enc_dir):
         if ds.id == ds_id:

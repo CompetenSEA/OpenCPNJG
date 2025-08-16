@@ -56,3 +56,5 @@ pytest VDR/chart-tiler/tests/test_convert_geotiff.py
 pytest VDR/chart-tiler/tests/test_registry_scan.py
 pytest VDR/chart-tiler/tests/test_tiles_geotiff.py
 ```
+
+See `../docs/map_pipeline.md` for a broader pipeline overview.
