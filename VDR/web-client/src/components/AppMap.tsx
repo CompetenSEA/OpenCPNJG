@@ -9,15 +9,35 @@ export interface MarinerParams {
 
 export function createMapAPI(map: any) {
   const params: MarinerParams = { safety: 10, shallow: 5, deep: 30 };
-  return {
-    setMarinerParams(p: Partial<MarinerParams>) {
-      Object.assign(params, p);
+  let datasetId = '';
+  const api: any = {
+    async loadCharts() {
+      const resp = await fetch('/charts');
+      const data = await resp.json();
+      return data.enc?.datasets || [];
+    },
+    setDataset(id: string, bounds?: number[]) {
+      datasetId = id;
       const style = map.getStyle ? map.getStyle() : { sources: { enc: { tiles: [] } } };
       const { safety, shallow, deep } = params;
-      style.sources.enc.tiles = [
-        `/tiles/enc/{z}/{x}/{y}?fmt=mvt&safety=${safety}&shallow=${shallow}&deep=${deep}`,
-      ];
+      style.sources.enc = {
+        type: 'vector',
+        tiles: [`/tiles/enc/${id}/{z}/{x}/{y}?fmt=mvt&safety=${safety}&shallow=${shallow}&deep=${deep}`],
+      };
+      style.sources.base = style.sources.enc;
       map.setStyle(style);
+      if (bounds && map.fitBounds) {
+        map.fitBounds([
+          [bounds[0], bounds[1]],
+          [bounds[2], bounds[3]],
+        ]);
+      }
+    },
+    setMarinerParams(p: Partial<MarinerParams>) {
+      Object.assign(params, p);
+      if (datasetId) {
+        api.setDataset(datasetId);
+      }
     },
     toggleLayer(id: string, visible: boolean) {
       map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
@@ -38,27 +58,25 @@ export function createMapAPI(map: any) {
           };
           style.transformRequest = (url: string) => {
             if (url.includes('openstreetmap')) {
-              return { url, headers: { 'User-Agent': 'vdr-app' } }; // TODO self-host OSM
+              return { url, headers: { 'User-Agent': 'vdr-app' } };
             }
             return { url } as any;
           };
         }
+        map.setStyle(style);
       } else if (base === 'geotiff' && chartId) {
         style.sources.base = {
           type: 'raster',
           tiles: [`/tiles/geotiff/${chartId}/{z}/{x}/{y}.png`],
           tileSize: 256,
         };
+        map.setStyle(style);
       } else if (base === 'enc') {
-        style.sources.base = {
-          type: 'vector',
-          tiles: ['/tiles/enc/{z}/{x}/{y}?fmt=mvt'],
-        };
-        style.sources.enc = style.sources.base;
+        api.setDataset(chartId || datasetId);
       }
-      map.setStyle(style);
     },
   };
+  return api;
 }
 
 interface AppMapProps {

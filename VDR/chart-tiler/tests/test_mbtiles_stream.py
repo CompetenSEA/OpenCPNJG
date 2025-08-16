@@ -27,6 +27,8 @@ def _make_mbtiles(path: Path, tile_bytes: bytes) -> None:
     conn.execute('CREATE TABLE tiles (zoom_level INTEGER, tile_column INTEGER, tile_row INTEGER, tile_data BLOB)')
     conn.execute('CREATE TABLE metadata (name TEXT, value TEXT)')
     conn.execute('INSERT INTO metadata (name,value) VALUES ("format","pbf")')
+    conn.executemany('INSERT INTO metadata (name,value) VALUES (?,?)',
+                     [("bounds", "0,0,1,1"), ("minzoom", "0"), ("maxzoom", "5")])
     conn.execute('INSERT INTO tiles VALUES (0,0,0,?)', (tile_bytes,))
     conn.commit()
     conn.close()
@@ -37,7 +39,7 @@ def test_mbtiles_stream(tmp_path, monkeypatch):
     mb = tmp_path / 'one.mbtiles'
     tile = b'xyz'
     _make_mbtiles(mb, tile)
-    monkeypatch.setenv('MBTILES_PATH', str(mb))
+    monkeypatch.setenv('ENC_DIR', str(tmp_path))
     import importlib.util
     import prometheus_client
     reg = prometheus_client.CollectorRegistry()
@@ -52,3 +54,10 @@ def test_mbtiles_stream(tmp_path, monkeypatch):
     assert r.status_code == 200
     assert r.content == tile
     assert r.headers['content-type'] == 'application/x-protobuf'
+    # add second dataset
+    _make_mbtiles(tmp_path / 'two.mbtiles', tile)
+    r2 = client.get('/tiles/enc/0/0/0?fmt=mvt')
+    assert r2.status_code == 404
+    r3 = client.get('/tiles/enc/one/0/0/0?fmt=mvt')
+    assert r3.status_code == 200
+    assert r3.content == tile

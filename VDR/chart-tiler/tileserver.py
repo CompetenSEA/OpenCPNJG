@@ -18,7 +18,8 @@ import xml.etree.ElementTree as ET
 from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
-from registry import get_registry, ChartRecord
+import hashlib
+from registry import get_registry, ChartRecord, list_datasets, get_dataset
 from typing import Dict, Optional, List, Any
 
 try:
@@ -53,9 +54,11 @@ except Exception:  # pragma: no cover
     class RasterMVPUnavailable(Exception):
         pass
 try:
-    from datasource_mbtiles import MBTilesDataSource  # type: ignore
+    from datasource_mbtiles import MBTilesDataSource, get_datasource  # type: ignore
 except Exception:  # pragma: no cover - optional
     MBTilesDataSource = None  # type: ignore
+    def get_datasource(path: str):  # type: ignore
+        raise RuntimeError("MBTiles support unavailable")
 
 # Allow importing parsing helpers
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server-styling"))
@@ -86,8 +89,6 @@ PNG_1X1 = base64.b64decode(
     b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1kAAAAASUVORK5CYII="
 )
 
-MBTILES_PATH = os.environ.get("MBTILES_PATH")
-_mbtiles_ds = MBTilesDataSource(MBTILES_PATH) if MBTILES_PATH and MBTilesDataSource else None
 
 
 def _cache_key(fmt: str, cfg: ContourConfig, z: int, x: int, y: int, ds: str = "") -> str:
@@ -106,6 +107,23 @@ def _tile_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
         math.atan(math.sinh(math.pi - 2.0 * math.pi * (y + 1) / n))
     )
     return lon_left, lat_bottom, lon_right, lat_top
+
+
+def _cfg_from_params(
+    sc: float | None,
+    safety: float | None,
+    shallow: float | None,
+    deep: float | None,
+) -> ContourConfig:
+    if safety is not None or shallow is not None or deep is not None:
+        return ContourConfig(
+            safety=safety if safety is not None else DEFAULT_CONFIG.safety,
+            shallow=shallow if shallow is not None else DEFAULT_CONFIG.shallow,
+            deep=deep if deep is not None else DEFAULT_CONFIG.deep,
+        )
+    if sc is not None:
+        return ContourConfig(safety=sc, shallow=sc, deep=sc)
+    return DEFAULT_CONFIG
 
 
 _chartsymbols_path = STYLING_DIST / "assets" / "s52" / "chartsymbols.xml"
@@ -196,6 +214,35 @@ def _set_redis(key: str, value: bytes) -> None:  # pragma: no cover - depends on
         _redis.set(key, value, ex=_redis_ttl or None)
 
 
+def _serve_mbtiles(
+    mb: MBTilesDataSource,
+    ds_id: str,
+    z: int,
+    x: int,
+    y: int,
+    fmt: str,
+    cfg: ContourConfig,
+) -> Response:
+    if fmt != "mvt":
+        return Response(status_code=415)
+    key = _cache_key(fmt, cfg, z, x, y, ds_id)
+    cached = _get_from_redis(key)
+    cache_state = "hit" if cached is not None else "miss"
+    if cached is not None:
+        headers = {"X-Tile-Cache": cache_state, "Cache-Control": "public, max-age=60"}
+        etag_src = f"{mb.path}:{z}:{x}:{y}".encode()
+        headers["ETag"] = hashlib.sha1(etag_src).hexdigest()
+        return Response(content=cached, media_type="application/x-protobuf", headers=headers)
+    data = mb.get_tile(z, x, y)
+    if data is None:
+        return Response(status_code=204)
+    _set_redis(key, data)
+    headers = {"X-Tile-Cache": cache_state, "Cache-Control": "public, max-age=60"}
+    etag_src = f"{mb.path}:{z}:{x}:{y}".encode()
+    headers["ETag"] = hashlib.sha1(etag_src).hexdigest()
+    return Response(content=data, media_type="application/x-protobuf", headers=headers)
+
+
 @app.get("/tiles/cm93/{z}/{x}/{y}.png")
 def tiles_png(
     z: int,
@@ -236,27 +283,8 @@ def tiles(
     deep: float | None = None,
 ) -> Response:
     start = time.perf_counter()
-    if _mbtiles_ds:
-        if fmt != "mvt":
-            return Response(status_code=415)
-        data = _mbtiles_ds.get_tile(z, x, y)
-        if data is None:
-            return Response(status_code=204)
-        return Response(content=data, media_type="application/x-protobuf")
-
-    if safety is not None or shallow is not None or deep is not None:
-        cfg = ContourConfig(
-            safety=safety if safety is not None else DEFAULT_CONFIG.safety,
-            shallow=shallow if shallow is not None else DEFAULT_CONFIG.shallow,
-            deep=deep if deep is not None else DEFAULT_CONFIG.deep,
-        )
-    elif sc is not None:
-        cfg = ContourConfig(safety=sc, shallow=sc, deep=sc)
-    else:
-        cfg = DEFAULT_CONFIG
-
-    ds_id = _mbtiles_ds.path if _mbtiles_ds else ""
-    key = _cache_key(fmt, cfg, z, x, y, ds_id)
+    cfg = _cfg_from_params(sc, safety, shallow, deep)
+    key = _cache_key(fmt, cfg, z, x, y, "")
     cached = _get_from_redis(key)
     cache_state = "hit" if cached is not None else "miss"
     if cached is not None:
@@ -322,6 +350,39 @@ def tiles(
 # ---------------------------------------------------------------------------
 
 
+@app.get("/tiles/enc/{ds}/{z}/{x}/{y}")
+def tiles_enc_dataset(
+    ds: str,
+    z: int,
+    x: int,
+    y: int,
+    fmt: str = "mvt",
+    sc: float | None = None,
+    safety: float | None = None,
+    shallow: float | None = None,
+    deep: float | None = None,
+) -> Response:
+    dataset = get_dataset(ds)
+    if not dataset:
+        raise HTTPException(status_code=404)
+    cfg = _cfg_from_params(sc, safety, shallow, deep)
+    mb = get_datasource(str(dataset.path))
+    start = time.perf_counter()
+    resp = _serve_mbtiles(mb, ds, z, x, y, fmt, cfg)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "fmt=%s ds=%s z=%d x=%d y=%d cache=%s ms=%.2f",
+        fmt,
+        ds,
+        z,
+        x,
+        y,
+        resp.headers.get("X-Tile-Cache", "miss"),
+        duration_ms,
+    )
+    return resp
+
+
 @app.get("/tiles/enc/{z}/{x}/{y}")
 def tiles_enc(
     z: int,
@@ -333,9 +394,20 @@ def tiles_enc(
     shallow: float | None = None,
     deep: float | None = None,
 ) -> Response:
-    """Wrapper around :func:`tiles` but mounted on ``/tiles/enc``."""
-
-    return tiles(z, x, y, fmt=fmt, sc=sc, safety=safety, shallow=shallow, deep=deep)
+    datasets = list_datasets()
+    if len(datasets) == 1:
+        return tiles_enc_dataset(
+            datasets[0].id,
+            z,
+            x,
+            y,
+            fmt=fmt,
+            sc=sc,
+            safety=safety,
+            shallow=shallow,
+            deep=deep,
+        )
+    raise HTTPException(status_code=404)
 
 
 @app.get("/config/contours")
@@ -347,8 +419,15 @@ def get_contours_config() -> Dict[str, float | None]:
 
 @app.get("/config/datasource")
 def get_datasource_config() -> Dict[str, object]:
-    if _mbtiles_ds:
-        return {"type": "mbtiles", "path": MBTILES_PATH, "metadata": _mbtiles_ds.metadata()}
+    datasets = list_datasets()
+    if datasets:
+        return {
+            "type": "mbtiles",
+            "datasets": [
+                {"id": d.id, "path": str(d.path), "summary": get_datasource(str(d.path)).summary()}
+                for d in datasets
+            ],
+        }
     return {"type": "stub"}
 
 
@@ -417,15 +496,18 @@ def _serialize(rec: ChartRecord) -> Dict[str, Any]:
 
 
 @app.get("/charts")
-def list_charts(
-    kind: str | None = None,
-    q: str | None = None,
-    page: int = 1,
-    pageSize: int = 50,
-) -> List[Dict[str, Any]]:
-    page = max(1, page)
-    pageSize = max(1, min(100, pageSize))
-    return [_serialize(r) for r in reg.list(kind=kind, q=q, page=page, pageSize=pageSize)]
+def charts_summary() -> Dict[str, Any]:
+    datasets = [
+        {
+            "id": d.id,
+            "title": d.title,
+            "bounds": d.bounds,
+            "minzoom": d.minzoom,
+            "maxzoom": d.maxzoom,
+        }
+        for d in list_datasets()
+    ]
+    return {"base": ["osm", "geotiff", "enc"], "enc": {"datasets": datasets}}
 
 
 @app.get("/charts/{cid}")
