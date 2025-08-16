@@ -8,7 +8,6 @@ required for the vector‑first prototype.  Colours and ordering are derived fro
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import re
 import sys
@@ -22,6 +21,7 @@ from s52_xml import (
     parse_symbols,
     parse_linestyles,
     parse_patterns,
+    parse_s57_catalogue,
 )
 
 
@@ -41,33 +41,6 @@ def get_colour(colours: Dict[str, str], token: str, fallback: str | None = None)
     if fallback and fallback in colours:
         return colours[fallback]
     return "#ff00ff"  # magenta for missing tokens
-
-
-def parse_s57_catalogue(path: Path) -> Dict[str, Set[str]]:
-    """Parse s57objectclasses.csv returning primitives per OBJL."""
-    catalogue: Dict[str, Set[str]] = {}
-    if not path or not path.exists():
-        return catalogue
-    with path.open(newline="") as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            objl = row.get("Acronym") or row.get("acronym")
-            if not objl:
-                continue
-            prims = row.get("Primitives") or row.get("primitives") or "P"
-            prim_set: Set[str] = set()
-            for prim in prims.split(";"):
-                p = prim.strip().upper()
-                if p.startswith("P"):
-                    prim_set.add("P")
-                elif p.startswith("L"):
-                    prim_set.add("L")
-                elif p.startswith("A"):
-                    prim_set.add("A")
-            if not prim_set:
-                prim_set.add("P")
-            catalogue[objl] = prim_set
-    return catalogue
 
 
 def generate_stub_layers_from_catalog(
@@ -916,4 +889,3 @@ def main() -> None:  # pragma: no cover - CLI wrapper
 
 if __name__ == "__main__":
     main()
-

@@ -2,10 +2,17 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 import sys
 
+
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'server-styling'))
 
-from s52_xml import parse_symbols, parse_linestyles, parse_lookups
+from s52_xml import (
+    parse_symbols,
+    parse_linestyles,
+    parse_lookups,
+    parse_s57_catalogue,
+    parse_s57_attributes,
+)
 import pytest
 
 
@@ -46,3 +53,18 @@ def test_symbol_rotation_flag():
     if not sym or 'rotate' not in sym:
         pytest.skip('LITVES03 rotation flag missing in this chartsymbols.xml')
     assert sym['rotate'] is True
+
+
+def test_s57_catalogue_and_attributes():
+    data_dir = ROOT.parent / 'data' / 's57data'
+    cat_path = data_dir / 's57objectclasses.csv'
+    attr_path = data_dir / 's57attributes.csv'
+    if not cat_path.exists() or not attr_path.exists():
+        pytest.skip('s57 CSV catalogues missing')
+    catalogue = parse_s57_catalogue(cat_path)
+    assert catalogue.get('BCNCAR') == {'P'}
+    assert 'L' in catalogue.get('DEPCNT', set())
+    attrs = parse_s57_attributes(attr_path)
+    for key in ['OBJNAM', 'NOBJNM', 'QUAPOS', 'WATLEV', 'SCAMIN', 'ORIENT']:
+        assert key in attrs
+    assert attrs['OBJNAM']['type'] == 'S'
