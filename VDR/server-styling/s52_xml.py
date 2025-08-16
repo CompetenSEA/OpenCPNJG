@@ -2,8 +2,10 @@ from __future__ import annotations
 
 """Helpers to parse small subsets of the S-52 ``chartsymbols.xml`` file."""
 
+import csv
 import xml.etree.ElementTree as ET
-from typing import Dict, List, Any
+from pathlib import Path
+from typing import Dict, List, Any, Set
 
 Element = ET.Element
 
@@ -174,6 +176,58 @@ def parse_lookups(root: Element) -> List[Dict[str, Any]]:
     return lookups
 
 
+def parse_s57_catalogue(path: Path) -> Dict[str, Set[str]]:
+    """Parse ``s57objectclasses.csv`` returning primitives per OBJL."""
+
+    catalogue: Dict[str, Set[str]] = {}
+    if not path or not path.exists():
+        return catalogue
+    with path.open(newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            objl = (row.get("Acronym") or row.get("acronym") or "").strip()
+            if not objl:
+                continue
+            prims = row.get("Primitives") or row.get("primitives") or "P"
+            prim_set: Set[str] = set()
+            for prim in prims.split(";"):
+                p = prim.strip().upper()
+                if p.startswith("P"):
+                    prim_set.add("P")
+                elif p.startswith("L"):
+                    prim_set.add("L")
+                elif p.startswith("A"):
+                    prim_set.add("A")
+            if not prim_set:
+                prim_set.add("P")
+            catalogue[objl] = prim_set
+    return catalogue
+
+
+def parse_s57_attributes(path: Path) -> Dict[str, Dict[str, str]]:
+    """Parse ``s57attributes.csv`` returning metadata keyed by acronym."""
+
+    attrs: Dict[str, Dict[str, str]] = {}
+    if not path or not path.exists():
+        return attrs
+    with path.open(newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            acronym = (row.get("Acronym") or row.get("acronym") or "").strip()
+            if not acronym:
+                continue
+            attrs[acronym] = {
+                "code": row.get("Code") or row.get("code") or "",
+                "name": row.get("Attribute") or row.get("attribute") or "",
+                "type": row.get("Attributetype")
+                or row.get("attributeType")
+                or row.get("attributetype")
+                or "",
+                "class": row.get("Class") or row.get("class") or "",
+            }
+    return attrs
+
+
 __all__ = [
     "parse_palette_colors",
     "parse_day_colors",
@@ -181,4 +235,6 @@ __all__ = [
     "parse_linestyles",
     "parse_patterns",
     "parse_lookups",
+    "parse_s57_catalogue",
+    "parse_s57_attributes",
 ]

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -13,21 +12,8 @@ from s52_xml import (
     parse_linestyles,
     parse_patterns,
     parse_lookups,
+    parse_s57_catalogue,
 )
-
-
-def parse_s57_catalogue(path: Path) -> Dict[str, Set[str]]:
-    catalogue: Dict[str, Set[str]] = {}
-    if not path or not path.exists():
-        return catalogue
-    with path.open(newline="") as fh:
-        reader = csv.DictReader(fh)
-        for row in reader:
-            objl = row.get("Acronym") or row.get("acronym")
-            if not objl:
-                continue
-            catalogue[objl] = set((row.get("Primitives") or row.get("primitives") or "P").split(";"))
-    return catalogue
 
 
 def parse_args() -> argparse.Namespace:
