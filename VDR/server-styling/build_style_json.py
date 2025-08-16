@@ -555,6 +555,43 @@ def build_layers(
         )
     )
 
+    if labels:
+        layers.append(
+            (
+                prio("OBJNAM", 90),
+                {
+                    "id": "feature-names",
+                    "type": "symbol",
+                    "source": source,
+                    "source-layer": source_layer,
+                    "filter": ["any", ["has", "OBJNAM"], ["has", "NOBJNM"]],
+                    "layout": {
+                        "text-field": [
+                            "coalesce",
+                            ["get", "OBJNAM"],
+                            ["get", "NOBJNM"],
+                        ],
+                        "text-font": ["Noto Sans Regular"],
+                        "text-size": [
+                            "interpolate",
+                            ["linear"],
+                            ["zoom"],
+                            5,
+                            12,
+                            12,
+                            16,
+                        ],
+                    },
+                    "paint": {
+                        "text-color": get_colour(colors, "CHBLK"),
+                        "text-halo-color": "#ffffff",
+                        "text-halo-width": 1,
+                    },
+                    "metadata": {"maplibre:s52": "OBJNAM-label"},
+                },
+            )
+        )
+
     layers.sort(key=lambda tup: tup[0])
     return [layer for _, layer in layers]
 
