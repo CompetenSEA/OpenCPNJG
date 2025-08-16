@@ -20,6 +20,7 @@ from s52_xml import (
     parse_lookups,
     parse_symbols,
     parse_linestyles,
+    parse_patterns,
 )
 
 
@@ -409,6 +410,134 @@ def build_layers(
     return [layer for _, layer in layers]
 
 
+def _norm_dash(pattern: str | None) -> List[float] | None:
+    dash_map = {
+        "solid": None,
+        "dash": [4, 2],
+        "dot": [1, 2],
+        "dashdot": [4, 2, 1, 2],
+    }
+    return dash_map.get(pattern or "solid")
+
+
+def generate_layers_from_lookups(
+    colors: Dict[str, str],
+    lookups: List[Dict[str, object]],
+    symbols: Dict[str, Dict[str, object]],
+    linestyles: Dict[str, Dict[str, object]],
+    patterns: Dict[str, Dict[str, object]],
+    source: str,
+    source_layer: str,
+    priorities: Dict[str, int],
+) -> List[tuple[int, Dict[str, object]]]:
+    """Synthesise minimal layers for all lookups."""
+
+    layers: List[tuple[int, Dict[str, object]]] = []
+    for lu in lookups:
+        objl = lu.get("objl", "")
+        instr = lu.get("instruction", "") or ""
+        geom = (lu.get("type", "") or "").lower()
+        prio = priorities.get(objl, 50)
+        metadata: Dict[str, object] = {"maplibre:s52": f"{objl}"}
+        fallback: str | None = None
+
+        if geom == "point":
+            sym_match = re.search(r"SY\(([A-Z0-9]+)\)", instr)
+            sym = sym_match.group(1) if sym_match else None
+            layout: Dict[str, object] = {"icon-allow-overlap": True}
+            if sym and sym in symbols:
+                meta = symbols[sym]
+                layout["icon-image"] = ["concat", "{SPRITE_PREFIX}", sym]
+                layout["icon-anchor"] = "center"
+                anchor = meta.get("anchor")
+                if anchor:
+                    ax, ay = anchor
+                    off_x = ax - meta.get("w", 0) / 2
+                    off_y = ay - meta.get("h", 0) / 2
+                    if off_x or off_y:
+                        layout["icon-offset"] = [off_x, off_y]
+                if meta.get("rotate"):
+                    layout["icon-rotate"] = ["coalesce", ["get", "ORIENT"], 0]
+                metadata["maplibre:s52"] = f"{objl}-{sym}"
+            else:
+                layout["icon-image"] = "marker-15"
+                fallback = "missingSymbol"
+                metadata["maplibre:s52"] = f"{objl}-fallback"
+            layer = {
+                "id": objl,
+                "type": "symbol",
+                "source": source,
+                "source-layer": source_layer,
+                "filter": ["==", ["get", "OBJL"], objl],
+                "layout": layout,
+                "metadata": metadata,
+            }
+        elif geom == "line":
+            ls_match = re.search(r"LS\(([^,]+),([^,]+),([^\)]+)\)", instr)
+            color_token = None
+            width = 1.0
+            pattern_name = None
+            if ls_match:
+                pattern_name, width_s, color_token = [p.strip() for p in ls_match.groups()]
+                try:
+                    width = float(width_s)
+                except ValueError:
+                    width = 1.0
+            ls_meta = linestyles.get(pattern_name or "")
+            paint: Dict[str, object] = {}
+            if ls_meta:
+                color_token = ls_meta.get("color-token") or color_token
+                width = ls_meta.get("width", width)
+                dash = _norm_dash(ls_meta.get("pattern"))
+                if dash:
+                    paint["line-dasharray"] = dash
+            else:
+                if pattern_name:
+                    fallback = "missingLineStyle"
+            paint["line-color"] = get_colour(colors, color_token or "CHBLK")
+            paint["line-width"] = width
+            metadata["maplibre:s52"] = f"{objl}-{color_token or pattern_name or 'fallback'}"
+            layer = {
+                "id": objl,
+                "type": "line",
+                "source": source,
+                "source-layer": source_layer,
+                "filter": ["==", ["get", "OBJL"], objl],
+                "paint": paint,
+                "metadata": metadata,
+            }
+        else:  # area or unknown
+            col_match = re.search(r"AC\(([A-Z0-9]+)\)", instr)
+            color_token = col_match.group(1) if col_match else None
+            pat_match = re.search(r"AP\(([A-Z0-9]+)\)", instr)
+            pat = pat_match.group(1) if pat_match else None
+            paint: Dict[str, object] = {}
+            if pat and pat in patterns and patterns[pat].get("type") == "bitmap":
+                paint["fill-pattern"] = ["concat", "{SPRITE_PREFIX}", pat]
+                metadata["maplibre:s52"] = f"{objl}-{pat}"
+            else:
+                if pat:
+                    fallback = "missingPattern"
+                paint["fill-color"] = get_colour(colors, color_token or "LANDA")
+                metadata["maplibre:s52"] = f"{objl}-{color_token or 'fallback'}"
+            layer = {
+                "id": objl,
+                "type": "fill",
+                "source": source,
+                "source-layer": source_layer,
+                "filter": ["==", ["get", "OBJL"], objl],
+                "paint": paint,
+                "metadata": metadata,
+            }
+
+        if fallback:
+            metadata["maplibre:s52Fallback"] = fallback
+        layers.append((prio, layer))
+
+    layers.sort(key=lambda tup: tup[0])
+    return layers
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -425,6 +554,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--safety-contour", type=float, default=0.0)
     p.add_argument("--sprite-prefix", default="", help="Prefix for sprite names")
     p.add_argument("--emit-name", help="Override style.name in output")
+    p.add_argument("--auto-cover", action="store_true", help="Generate layers for all lookups")
     p.add_argument(
         "--palette",
         choices=["day", "dusk", "night"],
@@ -455,6 +585,7 @@ def main() -> None:  # pragma: no cover - CLI wrapper
     priorities = _lookup_priorities(lookups)
     symbols = parse_symbols(root)
     linestyles = parse_linestyles(root)
+    patterns = parse_patterns(root)
 
     layers = build_layers(
         colors,
@@ -465,6 +596,23 @@ def main() -> None:  # pragma: no cover - CLI wrapper
         symbols,
         linestyles,
     )
+
+    if args.auto_cover:
+        auto_layers = generate_layers_from_lookups(
+            colors,
+            lookups,
+            symbols,
+            linestyles,
+            patterns,
+            args.source_name,
+            args.source_layer,
+            priorities,
+        )
+        existing_ids = {lyr["id"] for lyr in layers}
+        for _, lyr in auto_layers:
+            if lyr["id"] not in existing_ids:
+                layers.append(lyr)
+                existing_ids.add(lyr["id"])
 
     style = {
         "version": 8,

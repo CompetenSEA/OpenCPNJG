@@ -46,6 +46,7 @@ def main() -> None:  # pragma: no cover - CLI helper
     prev_path = coverage_dir / "style_coverage.prev.json"
     tokens: list[str] = []
     layers: list[dict[str, str]] = []
+    fallback_objs: set[str] = set()
     symbols_seen: set[str] = set()
     for style_path in dist_dir.glob("style.s52.*.json"):
         style = json.loads(style_path.read_text())
@@ -54,6 +55,9 @@ def main() -> None:  # pragma: no cover - CLI helper
             if token:
                 tokens.append(token)
                 layers.append({"id": lyr.get("id", ""), "token": token})
+                fb = lyr.get("metadata", {}).get("maplibre:s52Fallback")
+                if fb:
+                    fallback_objs.add(token.split("-", 1)[0])
             icon = lyr.get("layout", {}).get("icon-image")
             if isinstance(icon, str):
                 symbols_seen.add(icon)
@@ -74,13 +78,25 @@ def main() -> None:  # pragma: no cover - CLI helper
 
     coverage_dir.mkdir(parents=True, exist_ok=True)
     (coverage_dir / "symbols_seen.txt").write_text("\n".join(sorted(symbols_seen)))
+    presence = len(covered) / len(lookup_objs) if lookup_objs else 0.0
     data = {
         "totalLookups": len(lookup_objs),
         "coveredByStyle": len(covered),
         "missingObjL": missing,
         "layers": layers,
+        "presence": presence,
     }
     current_path.write_text(json.dumps(data, indent=2, sort_keys=True))
+
+    portrayal_path = coverage_dir / "style_portrayal.json"
+    portrayal = {
+        "totalLookups": len(lookup_objs),
+        "portrayalMissing": sorted(fallback_objs),
+        "coverage": (len(lookup_objs - fallback_objs) / len(lookup_objs))
+        if lookup_objs
+        else 0.0,
+    }
+    portrayal_path.write_text(json.dumps(portrayal, indent=2, sort_keys=True))
 
     print("Style coverage:")
     print(f"  total lookups: {len(lookup_objs)}")

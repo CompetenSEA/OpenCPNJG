@@ -6,19 +6,26 @@ BEGIN = "<!-- BEGIN:S52_COVERAGE -->"
 END = "<!-- END:S52_COVERAGE -->"
 
 
-def render(coverage_path: Path, symbols_path: Path, limit: int = 25) -> str:
+def render(
+    coverage_path: Path, portrayal_path: Path, symbols_path: Path, limit: int = 25
+) -> str:
     coverage = json.loads(coverage_path.read_text())
+    portrayal = json.loads(portrayal_path.read_text()) if portrayal_path.exists() else {}
     total = coverage.get("totalLookups", 0)
     covered = coverage.get("coveredByStyle", 0)
     missing = coverage.get("missingObjL", [])
     symbols = symbols_path.read_text().splitlines() if symbols_path.exists() else []
+    presence_pct = coverage.get("presence", 0.0) * 100
+    portrayal_pct = portrayal.get("coverage", 0.0) * 100
+    portrayal_missing = portrayal.get("portrayalMissing", [])
     missing_block = "\n".join(f"- {m}" for m in missing[:limit]) or "(none)"
     symbols_block = "\n".join(f"- {s}" for s in sorted(symbols)[:limit]) or "(none)"
     lines = [
         "| metric | value |",
         "| --- | ---: |",
         f"| total lookups | {total} |",
-        f"| covered by style | {covered} |",
+        f"| presence coverage | {presence_pct:.1f}% |",
+        f"| portrayal coverage | {portrayal_pct:.1f}% |",
         f"| missing | {len(missing)} |",
     ]
     prev_path = coverage_path.with_name("style_coverage.prev.json")
@@ -40,6 +47,9 @@ def render(coverage_path: Path, symbols_path: Path, limit: int = 25) -> str:
             "",
             "### Missing OBJL",
             missing_block,
+            "",
+            "### Portrayal gaps",
+            ("\n".join(f"- {m}" for m in portrayal_missing[:limit]) or "(none)"),
             "",
             "### Symbols seen",
             symbols_block,
@@ -67,9 +77,10 @@ def main() -> None:
     p = argparse.ArgumentParser(description="Update docs with coverage data")
     p.add_argument("--docs", type=Path, required=True)
     p.add_argument("--coverage", type=Path, required=True)
+    p.add_argument("--portrayal", type=Path, required=True)
     p.add_argument("--symbols", type=Path, required=True)
     args = p.parse_args()
-    block = render(args.coverage, args.symbols)
+    block = render(args.coverage, args.portrayal, args.symbols)
     updated = update_docs(args.docs, block)
     if updated:
         print("Documentation updated")

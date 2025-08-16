@@ -20,10 +20,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           npm install --no-save @maplibre/maplibre-gl-style-spec
-      - name: Sync assets
+      - name: Stage assets
         run: |
-          python VDR/server-styling/sync_opencpn_assets.py \
-            --lock VDR/server-styling/opencpn-assets.lock \
+          python VDR/server-styling/tools/stage_local_assets.py \
+            --repo-data data/s57data \
             --dest VDR/server-styling/dist/assets/s52 --force
       - name: Generate sprite
         run: |
@@ -34,22 +34,32 @@ jobs:
         run: |
           python VDR/server-styling/tools/build_all_styles.py \
             --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml \
-            --tiles-url "/tiles/cm93/{z}/{x}/{y}?fmt=mvt&sc={sc}" \
+            --tiles-url "/tiles/cm93/{z}/{x}/{y}?fmt=mvt&safety={safety}&shallow={shallow}&deep={deep}" \
             --source-name cm93 \
             --source-layer features \
             --sprite-base "/sprites/s52-day" \
             --sprite-prefix "s52-" \
             --glyphs "/glyphs/{fontstack}/{range}.pbf" \
-            --safety-contour 10
+            --safety-contour 10 \
+            --auto-cover \
+            --emit-name "OpenCPN S-52 {palette} (auto-cover)"
       - name: Coverage summary
         run: |
           python VDR/server-styling/s52_coverage.py \
             --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml
+      - name: Enforce presence coverage
+        run: |
+          python - <<'PY'
+import json,sys
+d=json.load(open('VDR/server-styling/dist/coverage/style_coverage.json'))
+sys.exit(0 if d.get('coveredByStyle')==d.get('totalLookups') else 1)
+PY
       - name: Docs freshness
         run: |
           python VDR/server-styling/tools/update_docs_from_coverage.py \
             --docs VDR/docs/s52s57cm93.md \
             --coverage VDR/server-styling/dist/coverage/style_coverage.json \
+            --portrayal VDR/server-styling/dist/coverage/style_portrayal.json \
             --symbols VDR/server-styling/dist/coverage/symbols_seen.txt || true
           git diff --quiet || {
             echo "Docs changed. Please commit VDR/docs/s52s57cm93.md"; exit 2; }
