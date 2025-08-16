@@ -33,6 +33,10 @@ jobs:
           if [ -f VDR/requirements.txt ]; then pip install -r VDR/requirements.txt; fi
           pip install pytest
 
+      - name: Set PYTHONPATH for tests
+        run: |
+          echo "PYTHONPATH=VDR:VDR/chart-tiler:${PYTHONPATH}" >> $GITHUB_ENV
+
       - name: Install Web deps (best effort)
         run: |
           if [ -f VDR/web-client/package.json ]; then npm ci --prefix VDR/web-client; fi
@@ -49,8 +53,7 @@ jobs:
 
       - name: Python tests
         run: |
-          pytest -q VDR || true
-          # If you want strict failures, remove '|| true'
+          pytest -q VDR
 
       - name: Web tests
         run: |
