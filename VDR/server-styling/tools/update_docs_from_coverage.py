@@ -18,6 +18,7 @@ def render(
     presence_pct = coverage.get("presence", 0.0) * 100
     portrayal_pct = portrayal.get("coverage", 0.0) * 100
     portrayal_missing = portrayal.get("portrayalMissing", [])
+    _sample = portrayal.get("sample", [])  # unused but reserved for future use
     missing_block = "\n".join(f"- {m}" for m in missing[:limit]) or "(none)"
     symbols_block = "\n".join(f"- {s}" for s in sorted(symbols)[:limit]) or "(none)"
     lines = [

@@ -88,13 +88,12 @@ def main() -> None:  # pragma: no cover - CLI helper
     }
     current_path.write_text(json.dumps(data, indent=2, sort_keys=True))
 
-    portrayal_path = coverage_dir / "style_portrayal.json"
+    portrayal_path = coverage_dir / "portrayal_coverage.json"
+    portrayed = len(lookup_objs - fallback_objs)
     portrayal = {
-        "totalLookups": len(lookup_objs),
+        "coverage": (portrayed / len(lookup_objs)) if lookup_objs else 0.0,
         "portrayalMissing": sorted(fallback_objs),
-        "coverage": (len(lookup_objs - fallback_objs) / len(lookup_objs))
-        if lookup_objs
-        else 0.0,
+        "sample": sorted(fallback_objs)[:25],
     }
     portrayal_path.write_text(json.dumps(portrayal, indent=2, sort_keys=True))
 
