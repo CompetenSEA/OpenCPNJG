@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List
@@ -68,7 +67,7 @@ def parse_gdalinfo(text: str) -> Dict[str, Any]:
         elif line.startswith("Overviews"):
             nums = [int(p.split("x")[0]) for p in line.split(" ") if "x" in p]
             overviews = nums
-    return {"bbox": bbox, "epsg": epsg, "resolution": res, "overviews": overviews}
+    return {"bbox": bbox, "epsg": epsg, "res": res, "overviews": overviews}
 
 
 def convert(path: Path) -> Path:
@@ -80,7 +79,7 @@ def convert(path: Path) -> Path:
     if sidecar.exists():
         try:
             info = json.loads(sidecar.read_text())
-            if info.get("checksum") == digest and out.exists():
+            if info.get("sha256") == digest and out.exists():
                 return out
         except Exception:
             pass
@@ -91,7 +90,7 @@ def convert(path: Path) -> Path:
     info_cmd = ["gdalinfo", str(out)]
     proc = subprocess.run(info_cmd, check=True, capture_output=True, text=True)
     meta = parse_gdalinfo(proc.stdout)
-    meta["checksum"] = digest
+    meta.update({"path": str(out), "sha256": digest})
     sidecar.write_text(json.dumps(meta, indent=2))
     return out
 
