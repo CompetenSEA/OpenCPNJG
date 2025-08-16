@@ -36,10 +36,14 @@ export const BasePicker = ({ api }: Props) => {
       })
       .catch(() => {});
   }, []);
-  const community = process.env.OSM_USE_COMMUNITY !== '0';
   function select(kind: 'osm' | 'geotiff' | 'enc', id?: string) {
-    api.setBase(kind, id);
-    setBase(kind);
+    if (kind === 'enc') {
+      api.setBase('enc', id);
+      setBase('enc');
+    } else {
+      api.setBase(kind, id);
+      setBase(kind);
+    }
   }
   return null;
 };

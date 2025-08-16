@@ -20,8 +20,8 @@ python -m VDR.chart-tiler.registry --scan VDR/chart-tiler/data
 # Run tileserver
 uvicorn VDR.chart-tiler.tileserver:app --reload --port 8080
 
-# Run web client (dev)
-npm start --prefix VDR/web-client
+# Web client tests
+npm test --prefix VDR/web-client
 ```
 Artefacts are written under `chart-tiler/data/*` and `server-styling/dist/*`.
 

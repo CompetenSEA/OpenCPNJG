@@ -49,8 +49,16 @@ class MBTilesDataSource:
         }
 
     # -- tiles ------------------------------------------------------------
+    @staticmethod
+    def _xyz_to_tms(z: int, y: int) -> int:
+        return (2 ** z - 1) - y
+
+    @staticmethod
+    def _tms_to_xyz(z: int, y: int) -> int:
+        return (2 ** z - 1) - y
+
     def _get_tile_uncached(self, z: int, x: int, y: int) -> Optional[bytes]:
-        tms_y = (2 ** z - 1) - y  # MBTiles stores TMS scheme
+        tms_y = self._xyz_to_tms(z, y)
         cur = self._conn.execute(
             "SELECT tile_data FROM tiles WHERE zoom_level=? AND tile_column=? AND tile_row=?",
             (z, x, tms_y),

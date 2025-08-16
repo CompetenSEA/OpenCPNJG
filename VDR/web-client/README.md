@@ -11,6 +11,11 @@ The URL supports:
 - `theme=day|dusk|night`
 - `safety`, `shallow`, `deep` mariner params
 
+`createMapAPI` exposes helpers:
+- `setBase(kind, id?)` – switch base layer or ENC dataset.
+- `setDataset(id, bounds?)` – set ENC dataset and optionally fit bounds.
+- `setMarinerParams(p)` – update S‑52 safety contours.
+
 ## Tests
 ```
 npm test --prefix VDR/web-client
