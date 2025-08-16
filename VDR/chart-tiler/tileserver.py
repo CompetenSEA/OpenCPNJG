@@ -27,6 +27,8 @@ except Exception:  # pragma: no cover
     Reader = None
 
 from fastapi import FastAPI, Response, HTTPException
+from pydantic import BaseModel
+import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -425,6 +427,56 @@ def charts_scan() -> Dict[str, Any]:
     data_dir = Path(__file__).resolve().parent / "data"
     reg.scan([data_dir])
     return {"scanned": True, "count": len(reg.list())}
+
+
+if os.environ.get("IMPORT_API_ENABLED") == "1":
+    class _EncReq(BaseModel):
+        src: str
+        respectScamin: bool | None = None
+        name: str | None = None
+
+    @app.post("/admin/import/enc", status_code=202)
+    async def admin_import_enc(req: _EncReq) -> Dict[str, Any]:
+        cmd = [
+            sys.executable,
+            str(Path(__file__).resolve().parent / "tools" / "import_enc.py"),
+            "--src",
+            req.src,
+        ]
+        if req.name:
+            cmd += ["--name", req.name]
+        if req.respectScamin:
+            cmd.append("--respect-scamin")
+        proc = await asyncio.create_subprocess_exec(*cmd)
+        return {"task": proc.pid}
+
+    class _Cm93Req(BaseModel):
+        src: str
+
+    @app.post("/admin/import/cm93", status_code=202)
+    async def admin_import_cm93(req: _Cm93Req) -> Dict[str, Any]:
+        cmd = [
+            sys.executable,
+            str(Path(__file__).resolve().parent / "tools" / "import_cm93.py"),
+            "--src",
+            req.src,
+        ]
+        proc = await asyncio.create_subprocess_exec(*cmd)
+        return {"task": proc.pid}
+
+    class _GeoReq(BaseModel):
+        src: str
+
+    @app.post("/admin/import/geotiff", status_code=202)
+    async def admin_import_geotiff(req: _GeoReq) -> Dict[str, Any]:
+        cmd = [
+            sys.executable,
+            str(Path(__file__).resolve().parent / "tools" / "import_geotiff.py"),
+            "--src",
+            req.src,
+        ]
+        proc = await asyncio.create_subprocess_exec(*cmd)
+        return {"task": proc.pid}
 
 
 # --- GeoTIFF tiles via pseudo MapProxy -------------------------------------
