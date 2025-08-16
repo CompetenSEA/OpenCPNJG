@@ -30,7 +30,10 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from typing import Iterable, Optional
+from typing import Iterable, Optional, List
+
+import csv
+from pathlib import Path
 
 from osgeo import gdal, ogr
 
@@ -57,6 +60,29 @@ def _s57_layers(path: str) -> Iterable[str]:
     if ds is None:
         raise RuntimeError(f"Unable to open S-57 dataset: {path}")
     return [ds.GetLayer(i).GetName() for i in range(ds.GetLayerCount())]
+
+
+def _named_attributes() -> List[str]:
+    """Return attribute acronyms considered object names.
+
+    The attribute definitions are sourced from ``s57attributes.csv`` which is
+    part of the OpenCPN distribution.  Only the ``OBJNAM`` and ``NOBJNM``
+    acronyms are currently recognised.  The function gracefully handles a
+    missing catalogue file so that the tiler can operate in constrained test
+    environments.
+    """
+
+    attrs: List[str] = []
+    csv_path = Path(__file__).resolve().parents[2] / "data" / "s57data" / "s57attributes.csv"
+    if not csv_path.exists():
+        return attrs
+    with csv_path.open(newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            acronym = row.get("Acronym") or row.get("ACRONYM") or row.get("Attribute")
+            if acronym in {"OBJNAM", "NOBJNM"}:
+                attrs.append(acronym)
+    return attrs
 
 
 def s57_to_cog(s57_path: str, output_tif: str) -> None:
@@ -121,16 +147,17 @@ def s57_to_mbtiles(s57_path: str, output_mbtiles: str) -> None:
                 s57_path,
             ]
         )
-        subprocess.check_call(
-            [
-                "tippecanoe",
-                "-o",
-                output_mbtiles,
-                "-zg",
-                "--drop-densest-as-needed",
-                str(geojson),
-            ]
-        )
+        tippecanoe_cmd = [
+            "tippecanoe",
+            "-o",
+            output_mbtiles,
+            "-zg",
+            "--drop-densest-as-needed",
+        ]
+        for attr in _named_attributes():
+            tippecanoe_cmd.extend(["--include", attr])
+        tippecanoe_cmd.append(str(geojson))
+        subprocess.check_call(tippecanoe_cmd)
 
 
 # ---------------------------------------------------------------------------
