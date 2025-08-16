@@ -11,6 +11,7 @@ import os
 import sqlite3
 import time
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -60,17 +61,66 @@ class Registry:
         )
         self.conn.commit()
 
+    def register_mbtiles(self, meta_path: Path, tiles_path: Path) -> None:
+        info = json.loads(Path(meta_path).read_text())
+        rid = tiles_path.stem
+        bbox = info.get("bounds", [0, 0, 0, 0])
+        minzoom = int(info.get("minzoom", 0))
+        maxzoom = int(info.get("maxzoom", 0))
+        kind = info.get("kind", "enc")
+        name = info.get("name", rid)
+        ts = time.time()
+        if isinstance(info.get("updatedAt"), str):
+            try:
+                ts = datetime.fromisoformat(info["updatedAt"]).timestamp()
+            except Exception:
+                pass
+        cur = self.conn.cursor()
+        cur.execute(
+            "REPLACE INTO charts (id,kind,name,bbox,minzoom,maxzoom,updated_at,path) VALUES (?,?,?,?,?,?,?,?)",
+            (rid, kind, name, json.dumps(bbox), minzoom, maxzoom, ts, str(tiles_path)),
+        )
+        self.conn.commit()
+
+    def register_cog(self, meta_path: Path, cog_path: Path) -> None:
+        info = json.loads(Path(meta_path).read_text())
+        rid = cog_path.stem.replace(".cog", "")
+        bbox = info.get("bbox", [0, 0, 0, 0])
+        cur = self.conn.cursor()
+        cur.execute(
+            "REPLACE INTO charts (id,kind,name,bbox,minzoom,maxzoom,updated_at,path) VALUES (?,?,?,?,?,?,?,?)",
+            (
+                rid,
+                "geotiff",
+                rid,
+                json.dumps(bbox),
+                0,
+                0,
+                time.time(),
+                str(cog_path),
+            ),
+        )
+        self.conn.commit()
+
     # -- scanning -----------------------------------------------------------------
     def scan(self, paths: Iterable[Path]) -> None:
         """Scan provided directories for chart artefacts."""
         cur = self.conn.cursor()
-        now = time.time()
         for p in paths:
             if not Path(p).exists():
                 continue
+            for meta in p.rglob("*.meta.json"):
+                mb = meta.with_name(meta.name.replace(".meta.json", ".mbtiles"))
+                if mb.exists():
+                    self.register_mbtiles(meta, mb)
+            for cog_meta in p.rglob("*.cog.json"):
+                cog = cog_meta.with_suffix(".tif")
+                if cog.exists():
+                    self.register_cog(cog_meta, cog)
             for mb in p.rglob("*.mbtiles"):
+                if mb.with_suffix(".meta.json").exists():
+                    continue
                 rid = mb.stem
-                # read bounds/minzoom/maxzoom from metadata table if available
                 try:
                     mconn = sqlite3.connect(mb)
                     mcur = mconn.cursor()
@@ -83,26 +133,7 @@ class Registry:
                     mconn.close()
                 cur.execute(
                     "REPLACE INTO charts (id,kind,name,bbox,minzoom,maxzoom,updated_at,path) VALUES (?,?,?,?,?,?,?,?)",
-                    (rid, "enc", name, json.dumps(bbox), minzoom, maxzoom, now, str(mb)),
-                )
-            for cog in p.rglob("*.cog.json"):
-                rid = cog.stem.replace(".cog", "")
-                info = json.loads(cog.read_text())
-                bbox = info.get("bbox", [0, 0, 0, 0])
-                minzoom = 0
-                maxzoom = 0
-                cur.execute(
-                    "REPLACE INTO charts (id,kind,name,bbox,minzoom,maxzoom,updated_at,path) VALUES (?,?,?,?,?,?,?,?)",
-                    (
-                        rid,
-                        "geotiff",
-                        rid,
-                        json.dumps(bbox),
-                        minzoom,
-                        maxzoom,
-                        now,
-                        str(cog.with_suffix(".tif")),
-                    ),
+                    (rid, "enc", name, json.dumps(bbox), minzoom, maxzoom, time.time(), str(mb)),
                 )
         if bool(int(os.environ.get("OSM_USE_COMMUNITY", "1"))):
             cur.execute(
@@ -114,7 +145,7 @@ class Registry:
                     json.dumps([-180, -90, 180, 90]),
                     0,
                     19,
-                    now,
+                    time.time(),
                     "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
                 ),
             )
@@ -127,7 +158,7 @@ class Registry:
             return
         cur = self.conn.cursor()
         rows = cur.execute(
-            "SELECT id,kind,name,bbox,minzoom,maxzoom,updated_at,path,url,tags FROM charts"
+            "SELECT id,kind,name,bbox,minzoom,maxzoom,updated_at,path,url,tags FROM charts ORDER BY updated_at DESC"
         ).fetchall()
         self._cache = [
             ChartRecord(
@@ -148,7 +179,7 @@ class Registry:
 
     def list(self, kind: Optional[str] = None, q: Optional[str] = None, page: int = 1, pageSize: int = 50) -> List[ChartRecord]:
         self._refresh_cache()
-        items = self._cache
+        items = [i for i in self._cache if i.kind in {"enc", "cm93", "geotiff", "osm"}]
         if kind:
             items = [i for i in items if i.kind == kind]
         if q:

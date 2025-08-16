@@ -1,6 +1,7 @@
 chart-tiler/charts.sqlite
 chart-tiler/*.sqlite
 chart-tiler/data/geotiff/
+chart-tiler/data/mbtiles/
 chart-tiler/tests/*.png
 chart-tiler/tests/*.mbtiles
 chart-tiler/tests/*.tif
