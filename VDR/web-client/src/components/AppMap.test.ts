@@ -20,6 +20,7 @@ function mockMap() {
 
 const map = mockMap();
 const api = createMapAPI(map);
+api.setDataset('ds1');
 api.toggleLayer('SOUNDG', false);
 assert.deepStrictEqual(map.layout[0], ['SOUNDG', 'visibility', 'none']);
 api.setMarinerParams({ safety: 12 });

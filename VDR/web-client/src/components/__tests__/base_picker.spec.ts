@@ -5,10 +5,11 @@ import { createBasePickerAPI } from '../BasePicker';
 declare const global: any;
 
 global.fetch = async () => ({
-  json: async () => [
-    { id: 'osm', kind: 'osm', name: 'OSM' },
-    { id: 'g1', kind: 'geotiff', name: 'g1' },
-  ],
+  json: async () => ({
+    base: ['osm', 'geotiff'],
+    geotiff: { datasets: [{ id: 'g1', title: 'g1' }] },
+    enc: { datasets: [] },
+  }),
 });
 
 function mockMap() {

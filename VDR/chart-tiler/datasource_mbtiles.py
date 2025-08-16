@@ -3,7 +3,7 @@
 import os
 import sqlite3
 from functools import lru_cache
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 
 class MBTilesDataSource:
@@ -33,10 +33,17 @@ class MBTilesDataSource:
         return {name: value for name, value in cur.fetchall()}
 
     def summary(self) -> Dict[str, object]:
+        """Return a small metadata summary with numeric bounds."""
         meta = self.metadata()
+        bounds: List[float] | None = None
+        if meta.get("bounds"):
+            try:
+                bounds = [float(x) for x in meta["bounds"].split(",")]
+            except Exception:  # pragma: no cover - defensive
+                bounds = None
         return {
             "name": meta.get("name"),
-            "bounds": meta.get("bounds"),
+            "bounds": bounds,
             "minzoom": int(meta.get("minzoom", 0)),
             "maxzoom": int(meta.get("maxzoom", 0)),
         }
@@ -55,3 +62,18 @@ class MBTilesDataSource:
         """Return raw tile bytes for ``z/x/y`` or ``None`` if missing."""
 
         return self._cached_get(z, x, y)
+
+
+# -- connection cache ---------------------------------------------------------
+
+_DS_CACHE: Dict[str, MBTilesDataSource] = {}
+
+
+def get_datasource(path: str) -> MBTilesDataSource:
+    """Return a cached :class:`MBTilesDataSource` for ``path``."""
+
+    ds = _DS_CACHE.get(path)
+    if ds is None:
+        ds = MBTilesDataSource(path)
+        _DS_CACHE[path] = ds
+    return ds

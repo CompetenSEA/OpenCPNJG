@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Dict
 
 DB_PATH = Path(__file__).with_name("registry.sqlite")
 TTL_SEC = 300
@@ -204,3 +204,73 @@ def get_registry() -> Registry:
     if not _registry:
         _registry = Registry()
     return _registry
+
+
+# ---------------------------------------------------------------------------
+# ENC dataset discovery
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Dataset:
+    id: str
+    title: str
+    path: Path
+    bounds: List[float]
+    minzoom: int
+    maxzoom: int
+    updated_at: float
+
+
+_enc_cache: Dict[Path, tuple[float, List[Dataset]]] = {}
+
+
+def _enc_dir(enc_dir: Optional[Path] = None) -> Path:
+    base = Path(__file__).resolve().parent / "data" / "enc"
+    return Path(os.environ.get("ENC_DIR", enc_dir or base))
+
+
+def _scan_enc(dir_path: Path) -> List[Dataset]:
+    datasets: List[Dataset] = []
+    for mb in sorted(dir_path.glob("*.mbtiles")):
+        try:
+            conn = sqlite3.connect(mb)
+            cur = conn.cursor()
+            meta = dict(cur.execute("SELECT name,value FROM metadata").fetchall())
+        finally:
+            conn.close()
+        bounds = [float(x) for x in meta.get("bounds", "0,0,0,0").split(",")]
+        minzoom = int(meta.get("minzoom", 0))
+        maxzoom = int(meta.get("maxzoom", 0))
+        title = meta.get("name", mb.stem)
+        datasets.append(
+            Dataset(
+                id=mb.stem,
+                title=title,
+                path=mb,
+                bounds=bounds,
+                minzoom=minzoom,
+                maxzoom=maxzoom,
+                updated_at=mb.stat().st_mtime,
+            )
+        )
+    datasets.sort(key=lambda d: (d.title, d.id))
+    return datasets
+
+
+def list_datasets(enc_dir: Optional[Path] = None) -> List[Dataset]:
+    """List ENC datasets under ``enc_dir`` (cached by mtime)."""
+
+    dir_path = _enc_dir(enc_dir)
+    dir_path.mkdir(parents=True, exist_ok=True)
+    mtime = max((p.stat().st_mtime for p in dir_path.glob("*.mbtiles")), default=0)
+    cached = _enc_cache.get(dir_path)
+    if not cached or cached[0] < mtime:
+        _enc_cache[dir_path] = (mtime, _scan_enc(dir_path))
+    return list(_enc_cache[dir_path][1])
+
+
+def get_dataset(ds_id: str, enc_dir: Optional[Path] = None) -> Dataset | None:
+    for ds in list_datasets(enc_dir):
+        if ds.id == ds_id:
+            return ds
+    return None

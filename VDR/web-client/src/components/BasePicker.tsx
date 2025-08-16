@@ -17,7 +17,23 @@ export const BasePicker = ({ api }: Props) => {
   useEffect(() => {
     fetch('/charts')
       .then((r) => r.json())
-      .then(setCharts)
+      .then((data) => {
+        const items: Chart[] = [];
+        if (data.enc?.datasets) {
+          items.push(
+            ...data.enc.datasets.map((d: any) => ({ id: d.id, kind: 'enc', name: d.title }))
+          );
+        }
+        if (data.base?.includes('geotiff') && data.geotiff?.datasets) {
+          items.push(
+            ...data.geotiff.datasets.map((d: any) => ({ id: d.id, kind: 'geotiff', name: d.title }))
+          );
+        }
+        if (data.base?.includes('osm')) {
+          items.push({ id: 'osm', kind: 'osm', name: 'OSM' });
+        }
+        setCharts(items);
+      })
       .catch(() => {});
   }, []);
   const community = process.env.OSM_USE_COMMUNITY !== '0';
@@ -33,7 +49,20 @@ export function createBasePickerAPI(api: ReturnType<typeof createMapAPI>) {
   return {
     async load(): Promise<Chart[]> {
       const resp = await fetch('/charts');
-      return resp.json();
+      const data = await resp.json();
+      const items: Chart[] = [];
+      if (data.enc?.datasets) {
+        items.push(...data.enc.datasets.map((d: any) => ({ id: d.id, kind: 'enc', name: d.title })));
+      }
+      if (data.base?.includes('geotiff') && data.geotiff?.datasets) {
+        items.push(
+          ...data.geotiff.datasets.map((d: any) => ({ id: d.id, kind: 'geotiff', name: d.title }))
+        );
+      }
+      if (data.base?.includes('osm')) {
+        items.push({ id: 'osm', kind: 'osm', name: 'OSM' });
+      }
+      return items;
     },
     select(kind: 'osm' | 'geotiff' | 'enc', id?: string) {
       api.setBase(kind, id);
