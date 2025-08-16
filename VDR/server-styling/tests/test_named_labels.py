@@ -43,4 +43,8 @@ def test_feature_name_layer(tmp_path: Path) -> None:
     assert layer is not None
     layout = layer['layout']
     assert layout['text-field'][0] == 'coalesce'
-    assert layout['text-size'][0] == 'interpolate'
+    ts = layout['text-size']
+    assert ts[0] == 'interpolate'
+    # zoom, size pairs
+    assert ts[3] == 5 and ts[4] == 12
+    assert ts[5] == 12 and ts[6] == 16
