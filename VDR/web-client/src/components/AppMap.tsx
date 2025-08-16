@@ -12,10 +12,10 @@ export function createMapAPI(map: any) {
   return {
     setMarinerParams(p: Partial<MarinerParams>) {
       Object.assign(params, p);
-      const style = map.getStyle ? map.getStyle() : { sources: { cm93: { tiles: [] } } };
+      const style = map.getStyle ? map.getStyle() : { sources: { enc: { tiles: [] } } };
       const { safety, shallow, deep } = params;
-      style.sources.cm93.tiles = [
-        `/tiles/cm93/{z}/{x}/{y}?fmt=mvt&safety=${safety}&shallow=${shallow}&deep=${deep}`,
+      style.sources.enc.tiles = [
+        `/tiles/enc/{z}/{x}/{y}?fmt=mvt&safety=${safety}&shallow=${shallow}&deep=${deep}`,
       ];
       map.setStyle(style);
     },
@@ -52,8 +52,9 @@ export function createMapAPI(map: any) {
       } else if (base === 'enc') {
         style.sources.base = {
           type: 'vector',
-          tiles: ['/tiles/cm93/{z}/{x}/{y}?fmt=mvt'],
+          tiles: ['/tiles/enc/{z}/{x}/{y}?fmt=mvt'],
         };
+        style.sources.enc = style.sources.base;
       }
       map.setStyle(style);
     },

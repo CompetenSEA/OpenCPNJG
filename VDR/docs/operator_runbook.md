@@ -35,6 +35,17 @@ python VDR/chart-tiler/tools/import_geotiff.py --src /charts/raster/harbor.tif
 curl -X POST localhost:8000/charts/scan
 ```
 
+### Import ENC locally
+
+When real cells are unavailable (e.g. in CI) synthesise a tiny fixture and
+register it with the tiler:
+
+```bash
+python VDR/chart-tiler/tools/make_mbtiles_fixture.py \
+  --out VDR/chart-tiler/data/enc/sample.mbtiles --scamin
+curl -X POST localhost:8000/charts/scan
+```
+
 ## Select Base Map
 
 The web client reads `/charts` to populate the base picker.  Toggle between

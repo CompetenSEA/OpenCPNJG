@@ -90,8 +90,11 @@ MBTILES_PATH = os.environ.get("MBTILES_PATH")
 _mbtiles_ds = MBTilesDataSource(MBTILES_PATH) if MBTILES_PATH and MBTilesDataSource else None
 
 
-def _cache_key(fmt: str, cfg: ContourConfig, z: int, x: int, y: int) -> str:
-    return f"{fmt}:{cfg.safety},{cfg.shallow},{cfg.deep}:{z}/{x}/{y}"
+def _cache_key(fmt: str, cfg: ContourConfig, z: int, x: int, y: int, ds: str = "") -> str:
+    """Return a cache key incorporating format, dataset and mariner params."""
+
+    mariner = f"{cfg.safety},{cfg.shallow},{cfg.deep}"
+    return f"{fmt}:{ds}:{z}/{x}/{y}:{mariner}"
 
 
 def _tile_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
@@ -252,7 +255,8 @@ def tiles(
     else:
         cfg = DEFAULT_CONFIG
 
-    key = _cache_key(fmt, cfg, z, x, y)
+    ds_id = _mbtiles_ds.path if _mbtiles_ds else ""
+    key = _cache_key(fmt, cfg, z, x, y, ds_id)
     cached = _get_from_redis(key)
     cache_state = "hit" if cached is not None else "miss"
     if cached is not None:
@@ -311,6 +315,27 @@ def tiles(
     if media_type.startswith("image/"):
         headers["Cache-Control"] = "public, max-age=60"
     return Response(content=data, media_type=media_type, headers=headers)
+
+
+# ---------------------------------------------------------------------------
+# ENC endpoint (MBTiles backed)
+# ---------------------------------------------------------------------------
+
+
+@app.get("/tiles/enc/{z}/{x}/{y}")
+def tiles_enc(
+    z: int,
+    x: int,
+    y: int,
+    fmt: str = "mvt",
+    sc: float | None = None,
+    safety: float | None = None,
+    shallow: float | None = None,
+    deep: float | None = None,
+) -> Response:
+    """Wrapper around :func:`tiles` but mounted on ``/tiles/enc``."""
+
+    return tiles(z, x, y, fmt=fmt, sc=sc, safety=safety, shallow=shallow, deep=deep)
 
 
 @app.get("/config/contours")

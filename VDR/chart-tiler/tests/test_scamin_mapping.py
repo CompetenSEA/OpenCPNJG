@@ -23,7 +23,7 @@ def test_monotonic_and_clamped() -> None:
 def test_respect_scamin_default(monkeypatch, tmp_path) -> None:
     calls = {}
 
-    def fake_s57_to_mbtiles(path, mbtiles, respect_scamin=True, scamin_map=None):
+    def fake_s57_to_mbtiles(path, mbtiles, respect_scamin=True, scamin_map=None, minzoom=5, maxzoom=14):
         calls["respect"] = respect_scamin
 
     def fake_s57_to_cog(*args, **kwargs):
