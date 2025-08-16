@@ -1,0 +1,94 @@
+{
+	"options": {
+		"paths": {
+			"root": "",
+			"fonts": "fonts",
+			"sprites": "",
+			"styles": "styles",
+			"mbtiles": "tilesets"
+		},
+		"domains": [
+			"localhost:8000",
+			"127.0.0.1:8000"
+		],
+		"formatQuality": {
+			"jpeg": 80,
+			"webp": 90
+		},
+		"maxScaleFactor": 3,
+		"maxSize": 2048,
+		"pbfAlias": "pbf",
+		"serveAllFonts": true,
+		"serveAllStyles": true,
+		"serveStaticMaps": true,
+		"tileMargin": 0
+	},
+	"styles": {
+		"basic": {
+			"style": "basic.json",
+			"tilejson": {
+				"type": "overlay",
+				"bounds": [8.44806, 47.32023, 8.62537, 47.43468]
+			}
+		}
+	},
+	"data": {
+		"turkey-osm": {
+			"mbtiles": "turkey-osm.mbtiles"
+		},
+		"G0511_1": {
+			"mbtiles": "G0511_1.mbtiles"
+		},
+		"G0511_2": {
+			"mbtiles": "G0511_2.mbtiles"
+		},
+		"G0511_3": {
+			"mbtiles": "G0511_3.mbtiles"
+		},
+		"G0511_4": {
+			"mbtiles": "G0511_4.mbtiles"
+		},
+		"G0511_5": {
+			"mbtiles": "G0511_5.mbtiles"
+		},
+		"G0511_6": {
+			"mbtiles": "G0511_6.mbtiles"
+		},
+		"G1111_1": {
+			"mbtiles": "G1111_1.mbtiles"
+		},
+		"G1111_2": {
+			"mbtiles": "G1111_2.mbtiles"
+		},
+		"G1111_3": {
+			"mbtiles": "G1111_3.mbtiles"
+		},
+		"G1113_1": {
+			"mbtiles": "G1113_1.mbtiles"
+		},
+		"G1113_2": {
+			"mbtiles": "G1113_2.mbtiles"
+		},
+		"TR400291": {
+			"mbtiles": "TR400291.mbtiles"
+		},
+		"TR402921": {
+			"mbtiles": "TR402921.mbtiles"
+		},
+		"TR402923": {
+			"mbtiles": "TR402923.mbtiles"
+		},
+		"TR502919": {
+			"mbtiles": "TR502919.mbtiles"
+		},
+		"TR502920": {
+			"mbtiles": "TR502920.mbtiles"
+		},
+		"TR52921A": {
+			"mbtiles": "TR52921A.mbtiles"
+		},
+		"TR52921B": {
+			"mbtiles": "TR52921B.mbtiles"
+		}
+	}
+}
