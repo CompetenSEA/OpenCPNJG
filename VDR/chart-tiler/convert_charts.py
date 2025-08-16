@@ -24,18 +24,23 @@ paramiko.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import pathlib
 import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from typing import Iterable, Optional, List
+from typing import Iterable, Optional, List, Dict
 
 import csv
 from pathlib import Path
 
-from osgeo import gdal, ogr
+try:  # pragma: no cover - GDAL optional in tests
+    from osgeo import gdal, ogr
+except Exception:  # pragma: no cover
+    gdal = None  # type: ignore
+    ogr = None  # type: ignore
 
 
 @dataclass
@@ -85,6 +90,44 @@ def _named_attributes() -> List[str]:
     return attrs
 
 
+_SCAMIN_ZOOM_MAP: Dict[int, int] = {
+    50000000: 0,
+    20000000: 2,
+    12000000: 3,
+    6000000: 4,
+    3000000: 5,
+    1500000: 6,
+    700000: 7,
+    350000: 8,
+    180000: 9,
+    90000: 10,
+    45000: 11,
+    22000: 12,
+    12000: 13,
+    8000: 14,
+    4000: 15,
+    2000: 16,
+}
+
+
+def scamin_to_zoom(scamin: float, mapping: Optional[Dict[int, int]] = None) -> int:
+    """Map an S-57 ``SCAMIN`` value (scale denominator) to a WebMercator zoom."""
+
+    if scamin is None:
+        return 0
+    try:
+        scamin_val = float(scamin)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return 0
+    mapping = mapping or _SCAMIN_ZOOM_MAP
+    # Iterate from largest scale denominator downwards
+    for scale in sorted(mapping.keys(), reverse=True):
+        if scamin_val >= scale:
+            return max(0, min(16, mapping[scale]))
+    # Smaller than smallest known scale -> max zoom
+    return 16
+
+
 def s57_to_cog(s57_path: str, output_tif: str) -> None:
     """Render an S-57 dataset to a Cloud Optimised GeoTIFF.
 
@@ -124,12 +167,19 @@ def s57_to_cog(s57_path: str, output_tif: str) -> None:
     os.unlink(tmp.name)
 
 
-def s57_to_mbtiles(s57_path: str, output_mbtiles: str) -> None:
+def s57_to_mbtiles(
+    s57_path: str,
+    output_mbtiles: str,
+    respect_scamin: bool = False,
+    scamin_map: Optional[Dict[int, int]] = None,
+) -> None:
     """Generate vector tiles from an S-57 dataset using tippecanoe.
 
     The S-57 features are first exported to GeoJSON using ``ogr2ogr`` and then
     piped to ``tippecanoe`` which builds the MBTiles database.  Both commands
-    are invoked via ``subprocess`` to avoid any C++ dependencies.
+    are invoked via ``subprocess`` to avoid any C++ dependencies.  When
+    ``respect_scamin`` is true each feature gains a ``tippecanoe`` property
+    derived from the ``SCAMIN`` attribute using :func:`scamin_to_zoom`.
     """
 
     layers = _s57_layers(s57_path)
@@ -147,6 +197,19 @@ def s57_to_mbtiles(s57_path: str, output_mbtiles: str) -> None:
                 s57_path,
             ]
         )
+
+        if respect_scamin:
+            data = json.loads(geojson.read_text())
+            for feat in data.get("features", []):
+                props = feat.get("properties", {})
+                scamin = props.get("SCAMIN")
+                if isinstance(scamin, (int, float)):
+                    z = scamin_to_zoom(scamin, scamin_map)
+                    meta = feat.setdefault("tippecanoe", {})
+                    meta["minzoom"] = z
+                    meta["maxzoom"] = 16
+            geojson.write_text(json.dumps(data))
+
         tippecanoe_cmd = [
             "tippecanoe",
             "-o",
@@ -154,7 +217,7 @@ def s57_to_mbtiles(s57_path: str, output_mbtiles: str) -> None:
             "-zg",
             "--drop-densest-as-needed",
         ]
-        for attr in _named_attributes():
+        for attr in _named_attributes() + ["SCAMIN"]:
             tippecanoe_cmd.extend(["--include", attr])
         tippecanoe_cmd.append(str(geojson))
         subprocess.check_call(tippecanoe_cmd)
@@ -166,17 +229,22 @@ def s57_to_mbtiles(s57_path: str, output_mbtiles: str) -> None:
 
 
 def cm93_to_s57(cm93_path: str, output_s57: str) -> None:
-    """Convert a CM93 file to an intermediate S-57 000 file.
+    """Convert a CM93 cell to a temporary S-57 ``.000`` file.
 
-    Full CM93 decoding is outside the scope of this demonstration.  In a
-    production pipeline this function would implement the parsing logic ported
-    from the original C++ reader.  Here we simply raise ``NotImplementedError``
-    to make the omission explicit while keeping the public API stable.
+    The preferred implementation shells out to an external CLI which understands
+    CM93.  Set the environment variable ``OPENCN_CM93_CLI`` to point at a
+    compatible binary providing a ``cm93_to_s57 <cm93> <out.000>`` style
+    interface.  When the variable is unset a :class:`NotImplementedError` is
+    raised with a helpful message so callers can skip gracefully in test
+    environments.
     """
 
-    raise NotImplementedError(
-        "CM93 conversion requires a dedicated parser which is not implemented"
-    )
+    cli = os.environ.get("OPENCN_CM93_CLI")
+    if not cli:
+        raise NotImplementedError(
+            "CM93 conversion requires OpenCPN CM93 reader; set OPENCN_CM93_CLI"
+        )
+    subprocess.check_call([cli, cm93_path, output_s57])
 
 
 # ---------------------------------------------------------------------------
@@ -216,6 +284,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser.add_argument("--user", help="SFTP username")
     parser.add_argument("--password", help="SFTP password")
     parser.add_argument("--remote-dir", default=".", help="Remote directory")
+    parser.add_argument(
+        "--respect-scamin",
+        action="store_true",
+        help="Encode tippecanoe minzoom from SCAMIN",
+    )
     args = parser.parse_args(argv)
 
     chart_path = pathlib.Path(args.chart)
@@ -233,7 +306,7 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     mbtiles = out_dir / f"{stem}.mbtiles"
     cog = out_dir / f"{stem}.tif"
 
-    s57_to_mbtiles(str(s57_path), str(mbtiles))
+    s57_to_mbtiles(str(s57_path), str(mbtiles), respect_scamin=args.respect_scamin)
     s57_to_cog(str(s57_path), str(cog))
 
     if args.upload:

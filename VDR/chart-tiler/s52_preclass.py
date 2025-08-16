@@ -30,7 +30,9 @@ class S52PreClassifier:
             self.cfg = ContourConfig(safety=sc, shallow=sc, deep=sc)
         self.colors = colors
         self.symbols = symbols or {}
-        # Hooks for future use: lookups, priorities, etc.
+        # State to track safety contour when exact match missing
+        self._nearest_cnt: Optional[tuple[float, Dict[str, Any]]] = None
+        self._has_exact_safety = False
 
     def classify(self, objl: str, props: Dict[str, Any]) -> Dict[str, Any]:
         """Return style helper attributes based on object and properties."""
@@ -60,10 +62,18 @@ class S52PreClassifier:
             return result
 
         if objl == "DEPCNT":
-            is_safety = float(props.get("VALDCO", -9999)) == self.cfg.safety
+            depth = float(props.get("VALDCO", -9999))
+            is_safety = depth == self.cfg.safety
             is_low_acc = float(props.get("QUAPOS", 0)) >= 2
             role = "safety" if is_safety else "normal"
-            return {"isSafety": is_safety, "isLowAcc": is_low_acc, "role": role}
+            result = {"isSafety": is_safety, "isLowAcc": is_low_acc, "role": role}
+            diff = abs(depth - self.cfg.safety)
+            if is_safety:
+                self._has_exact_safety = True
+            else:
+                if self._nearest_cnt is None or diff < self._nearest_cnt[0]:
+                    self._nearest_cnt = (diff, result)
+            return result
 
         if objl == "SOUNDG":
             valsou = props.get("VALSOU")
@@ -74,6 +84,8 @@ class S52PreClassifier:
             icon = self._hazard_icon(objl, props)
             if icon and (not self.symbols or icon in self.symbols):
                 result: Dict[str, Any] = {"hazardIcon": icon}
+                if self.cfg.hazardBuffer is not None:
+                    result["hazardBuffer"] = self.cfg.hazardBuffer
                 meta = self.symbols.get(icon) if self.symbols else None
                 if meta and meta.get("anchor"):
                     w = meta.get("w", 0)
@@ -83,11 +95,49 @@ class S52PreClassifier:
                     offy = int(round(h / 2 - ay))
                     result["hazardOffX"] = offx
                     result["hazardOffY"] = offy
+                watlev = props.get("WATLEV")
+                if watlev is not None:
+                    try:
+                        result["hazardWatlev"] = int(watlev)
+                    except (TypeError, ValueError):
+                        pass
                 return result
+            return {}
+
+        if objl.startswith("BCN") or objl.startswith("BOY"):
+            # determine category attribute CAT*
+            cat_val = None
+            for k, v in props.items():
+                if k.startswith("CAT"):
+                    cat_val = v
+                    break
+            icon = f"{objl}_{cat_val}" if cat_val is not None else objl
+            result: Dict[str, Any] = {"navaidIcon": icon}
+            orient = props.get("ORIENT")
+            if isinstance(orient, (int, float)):
+                result["orient"] = float(orient)
+            name = props.get("OBJNAM") or props.get("NOBJNM")
+            if name:
+                result["name"] = name
+            return result
+
+        if objl in {"CBLARE", "PIPARE"}:
+            pattern = props.get("lnstl") or props.get("LSTYLE")
+            if pattern in {"dash", "dot", "dashdot"}:
+                return {"linePattern": pattern}
             return {}
 
         # LNDARE/COALNE and other objects use static styling
         return {}
+
+    def finalize(self) -> None:
+        """Apply post-processing once all features have been classified."""
+
+        if self._has_exact_safety or not self._nearest_cnt:
+            return
+        _, result = self._nearest_cnt
+        result["isSafety"] = True
+        result["role"] = "safety"
 
     # ------------------------------------------------------------------
     def _hazard_icon(self, objl: str, props: Dict[str, Any]) -> Optional[str]:

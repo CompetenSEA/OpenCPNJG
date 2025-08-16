@@ -31,6 +31,10 @@ except Exception:  # pragma: no cover
 from datasource_stub import features_for_tile
 from mvt_builder import encode_mvt
 from s52_preclass import S52PreClassifier, ContourConfig
+try:
+    from datasource_mbtiles import MBTilesDataSource  # type: ignore
+except Exception:  # pragma: no cover - optional
+    MBTilesDataSource = None  # type: ignore
 
 # Allow importing parsing helpers
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server-styling"))
@@ -54,6 +58,9 @@ STYLING_DIST = BASE_DIR / "server-styling" / "dist"
 PNG_1X1 = base64.b64decode(
     b"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jP1kAAAAASUVORK5CYII="
 )
+
+MBTILES_PATH = os.environ.get("MBTILES_PATH")
+_mbtiles_ds = MBTilesDataSource(MBTILES_PATH) if MBTILES_PATH and MBTilesDataSource else None
 
 
 def _cache_key(fmt: str, cfg: ContourConfig, z: int, x: int, y: int) -> str:
@@ -161,6 +168,14 @@ def tiles(
     deep: float | None = None,
 ) -> Response:
     start = time.perf_counter()
+    if _mbtiles_ds:
+        if fmt != "mvt":
+            return Response(status_code=415)
+        data = _mbtiles_ds.get_tile(z, x, y)
+        if data is None:
+            return Response(status_code=204)
+        return Response(content=data, media_type="application/x-protobuf")
+
     if safety is not None or shallow is not None or deep is not None:
         cfg = ContourConfig(
             safety=safety if safety is not None else DEFAULT_CONFIG.safety,
@@ -226,6 +241,13 @@ def get_contours_config() -> Dict[str, float | None]:
     from dataclasses import asdict
 
     return asdict(DEFAULT_CONFIG)
+
+
+@app.get("/config/datasource")
+def get_datasource_config() -> Dict[str, object]:
+    if _mbtiles_ds:
+        return {"type": "mbtiles", "path": MBTILES_PATH, "metadata": _mbtiles_ds.metadata()}
+    return {"type": "stub"}
 
 
 @app.get("/style/s52.day.json")
