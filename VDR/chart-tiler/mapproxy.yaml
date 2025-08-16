@@ -1,0 +1,12 @@
+services:
+  demo: {}
+  tms:
+    use_grid_names: true
+sources:
+  geotiff:
+    type: tile
+    url: http://localhost/titiler/tiles/%(chart_id)s/%(z)s/%(x)s/%(y)s.png
+caches:
+  geotiff_cache:
+    sources: [geotiff]
+    grids: [GLOBAL_WEBMERCATOR]
