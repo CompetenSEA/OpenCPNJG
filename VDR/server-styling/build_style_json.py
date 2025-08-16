@@ -295,11 +295,20 @@ def build_layers(
     )
 
     # Point seamarks -------------------------------------------------------
-    seamarks = ["BCNLAT", "BCNCAR", "BCNISD", "BOYISD", "BOYLAT", "BOYCAR"]
+    seamarks = [
+        "BCNLAT",
+        "BCNCAR",
+        "BCNISD",
+        "BOYISD",
+        "BOYLAT",
+        "BOYCAR",
+        "RTPBCN",
+    ]
     for obj in seamarks:
         sym_name = None
         meta = None
-        for cand in (obj + "01", obj + "1", obj):
+        for suffix in ("01", "02", "1", ""):
+            cand = obj + suffix
             if cand in symbols:
                 sym_name = cand
                 meta = symbols[cand]
