@@ -12,3 +12,12 @@ make geotiff-cog SRC=/path/to/input.tif
 Output files are placed under `chart-tiler/data/geotiff` (ignored by git) and
 are safe to regenerate – runs are skipped when the checksum matches the existing
 sidecar.
+
+## Sidecar JSON schema
+
+```json
+{
+  "bbox": [minLon, minLat, maxLon, maxLat],
+  "name": "optional human readable name"
+}
+```

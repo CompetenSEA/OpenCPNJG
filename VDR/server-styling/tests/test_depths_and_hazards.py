@@ -19,6 +19,7 @@ def test_depth_contours_and_soundings():
     assert safety.get('paint', {}).get('line-width') == 2
     lowacc = next(lyr for lyr in style['layers'] if lyr['id'] == 'DEPCNT-lowacc')
     assert 'line-dasharray' in lowacc.get('paint', {})
+    assert 'isLowAcc' in json.dumps(lowacc.get('filter', {}))
     soundg = next(lyr for lyr in style['layers'] if lyr['id'] == 'SOUNDG')
     assert 'number-format' in json.dumps(soundg.get('layout', {}).get('text-field'))
 

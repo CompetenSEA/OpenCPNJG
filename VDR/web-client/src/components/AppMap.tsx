@@ -38,7 +38,7 @@ export function createMapAPI(map: any) {
           };
           style.transformRequest = (url: string) => {
             if (url.includes('openstreetmap')) {
-              return { url, headers: { 'User-Agent': 'opencpn-chart-tiler' } };
+              return { url, headers: { 'User-Agent': 'vdr-app' } }; // TODO self-host OSM
             }
             return { url } as any;
           };

@@ -10,6 +10,10 @@ structural changes:
   ENC data can downsample gracefully.
 * Styling uses stable layer identifiers and the `metadata.maplibre:s52` token so
   additional symbol sets can be introduced without breaking existing layers.
+* `/charts` API supports pagination, filtering and a rescan endpoint, allowing
+  new datasets to be added without restarting the service.
+* GeoTIFF tiles are served through a pluggable renderer with an LRU cache and
+  Prometheus metrics to aid capacity planning.
 
 ### OBJL → MVT design
 

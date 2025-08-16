@@ -36,6 +36,12 @@ class S52PreClassifier:
 
     def classify(self, objl: str, props: Dict[str, Any]) -> Dict[str, Any]:
         """Return style helper attributes based on object and properties."""
+        result: Dict[str, Any] = {}
+        try:
+            if float(props.get("QUAPOS", 0)) >= 2:
+                result["isLowAcc"] = True
+        except (TypeError, ValueError):
+            pass
 
         if objl == "DEPARE":
             d1 = props.get("DRVAL1")
@@ -56,7 +62,7 @@ class S52PreClassifier:
                 band = "DW"
             else:
                 band = "IM"
-            result: Dict[str, Any] = {"isShallow": is_shallow, "depthBand": band}
+            result.update({"isShallow": is_shallow, "depthBand": band})
             if token:
                 result["fillToken"] = token
             return result
@@ -64,9 +70,8 @@ class S52PreClassifier:
         if objl == "DEPCNT":
             depth = float(props.get("VALDCO", -9999))
             is_safety = depth == self.cfg.safety
-            is_low_acc = float(props.get("QUAPOS", 0)) >= 2
             role = "safety" if is_safety else "normal"
-            result = {"isSafety": is_safety, "isLowAcc": is_low_acc, "role": role}
+            result.update({"isSafety": is_safety, "role": role})
             diff = abs(depth - self.cfg.safety)
             if is_safety:
                 self._has_exact_safety = True
@@ -78,12 +83,13 @@ class S52PreClassifier:
         if objl == "SOUNDG":
             valsou = props.get("VALSOU")
             is_shallow = isinstance(valsou, (int, float)) and valsou < self.cfg.safety
-            return {"isShallow": is_shallow}
+            result.update({"isShallow": is_shallow})
+            return result
 
         if objl in {"OBSTRN", "WRECKS", "UWTROC", "ROCKS"}:
             icon = self._hazard_icon(objl, props)
             if icon and (not self.symbols or icon in self.symbols):
-                result: Dict[str, Any] = {"hazardIcon": icon}
+                result.update({"hazardIcon": icon})
                 if self.cfg.hazardBuffer is not None:
                     result["hazardBuffer"] = self.cfg.hazardBuffer
                 meta = self.symbols.get(icon) if self.symbols else None
@@ -102,7 +108,7 @@ class S52PreClassifier:
                     except (TypeError, ValueError):
                         pass
                 return result
-            return {}
+            return result
 
         if objl.startswith("BCN") or objl.startswith("BOY"):
             # determine category attribute CAT*
@@ -112,7 +118,7 @@ class S52PreClassifier:
                     cat_val = v
                     break
             icon = f"{objl}_{cat_val}" if cat_val is not None else objl
-            result: Dict[str, Any] = {"navaidIcon": icon}
+            result.update({"navaidIcon": icon})
             orient = props.get("ORIENT")
             if isinstance(orient, (int, float)):
                 result["orient"] = float(orient)
@@ -124,11 +130,11 @@ class S52PreClassifier:
         if objl in {"CBLARE", "PIPARE"}:
             pattern = props.get("lnstl") or props.get("LSTYLE")
             if pattern in {"dash", "dot", "dashdot"}:
-                return {"linePattern": pattern}
-            return {}
+                result["linePattern"] = pattern
+            return result
 
         # LNDARE/COALNE and other objects use static styling
-        return {}
+        return result
 
     # ------------------------------------------------------------------
     @staticmethod
