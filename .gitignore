@@ -23,3 +23,8 @@ tags
 
 # Ignore Build Dependency files
 *build-deps*
+
+# Chart tiler generated artefacts
+VDR/chart-tiler/data/**/*.cog.tif
+VDR/chart-tiler/data/**/*.cog.json
+VDR/chart-tiler/registry.sqlite

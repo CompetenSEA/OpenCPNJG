@@ -15,6 +15,7 @@ import os
 import sys
 import time
 import xml.etree.ElementTree as ET
+from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 from registry import get_registry, ChartRecord
@@ -58,11 +59,14 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"])
 logger = logging.getLogger("tileserver")
 
-_prom_registry = CollectorRegistry()
-_tile_gen_ms = Histogram(
-    "tile_gen_ms", "Time spent generating tiles", unit="ms", registry=_prom_registry
+_prom_registry = globals().setdefault("_prom_registry", CollectorRegistry())
+_tile_gen_ms = globals().setdefault(
+    "_tile_gen_ms",
+    Histogram("tile_gen_ms", "Time spent generating tiles", unit="ms", registry=_prom_registry),
 )
-_cache_hits = Counter("cache_hits", "Cache hits", registry=_prom_registry)
+_cache_hits = globals().setdefault(
+    "_cache_hits", Counter("cache_hits", "Cache hits", registry=_prom_registry)
+)
 _redis: Optional["redis.Redis"] = (
     redis.from_url(os.environ["REDIS_URL"]) if redis and "REDIS_URL" in os.environ else None
 )
@@ -346,6 +350,11 @@ def sprite_png() -> Response:
 def metrics() -> Response:
     return Response(generate_latest(_prom_registry), media_type=CONTENT_TYPE_LATEST)
 
+
+@app.get("/healthz")
+def healthz() -> Response:
+    return Response("OK")
+
 # ---------------------------------------------------------------------------
 # Chart registry API and GeoTIFF tile service
 reg = get_registry()
@@ -396,8 +405,11 @@ def chart_thumbnail(cid: str):  # pragma: no cover - simple placeholder
 
 
 # --- GeoTIFF tiles via pseudo MapProxy -------------------------------------
-_geo_cache: Dict[str, bytes] = {}
-_geo_hits = Counter("geotiff_cache_hits", "GeoTIFF tile cache hits", registry=_prom_registry)
+_geo_cache: "OrderedDict[str, bytes]" = globals().setdefault("_geo_cache", OrderedDict())
+_GEO_CACHE_SIZE = 256
+_geo_hits = globals().setdefault(
+    "_geo_hits", Counter("geotiff_cache_hits", "GeoTIFF tile cache hits", registry=_prom_registry)
+)
 
 
 def _render_geotiff(id: str, z: int, x: int, y: int, fmt: str) -> bytes:
@@ -415,14 +427,20 @@ def titiler_tiles(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Respons
 @app.get("/tiles/geotiff/{cid}/{z}/{x}/{y}.{fmt}")
 def tiles_geotiff(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Response:
     key = f"{cid}:{z}/{x}/{y}.{fmt}"
-    if key in _geo_cache:
+    cached = _geo_cache.get(key)
+    if cached is not None:
+        _geo_cache.move_to_end(key)
         _geo_hits.inc()
-        return Response(_geo_cache[key], media_type="image/png", headers={"X-Tile-Cache": "hit"})
+        return Response(cached, media_type="image/png", headers={"X-Tile-Cache": "hit", "Cache-Control": "public, max-age=60"})
     try:
         data = _render_geotiff(cid, z, x, y, fmt)
     except Exception:
-        if key in _geo_cache:
-            return Response(_geo_cache[key], media_type="image/png", headers={"X-Tile-Cache": "stale"})
+        cached = _geo_cache.get(key)
+        if cached is not None:
+            return Response(cached, media_type="image/png", headers={"X-Tile-Cache": "stale", "Cache-Control": "public, max-age=60"})
         raise HTTPException(status_code=502)
     _geo_cache[key] = data
-    return Response(data, media_type="image/png", headers={"X-Tile-Cache": "miss"})
+    _geo_cache.move_to_end(key)
+    if len(_geo_cache) > _GEO_CACHE_SIZE:
+        _geo_cache.popitem(last=False)
+    return Response(data, media_type="image/png", headers={"X-Tile-Cache": "miss", "Cache-Control": "public, max-age=60"})

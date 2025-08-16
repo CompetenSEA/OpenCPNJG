@@ -28,11 +28,21 @@ export function createMapAPI(map: any) {
     setBase(base: 'osm' | 'geotiff' | 'enc', chartId?: string) {
       const style = map.getStyle ? map.getStyle() : { sources: {} };
       if (base === 'osm') {
-        style.sources.base = {
-          type: 'raster',
-          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-          tileSize: 256,
-        };
+        if (process.env.OSM_USE_COMMUNITY === '0') {
+          delete style.sources.base;
+        } else {
+          style.sources.base = {
+            type: 'raster',
+            tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+            tileSize: 256,
+          };
+          style.transformRequest = (url: string) => {
+            if (url.includes('openstreetmap')) {
+              return { url, headers: { 'User-Agent': 'opencpn-chart-tiler' } };
+            }
+            return { url } as any;
+          };
+        }
       } else if (base === 'geotiff' && chartId) {
         style.sources.base = {
           type: 'raster',
