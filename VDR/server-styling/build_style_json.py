@@ -143,6 +143,7 @@ def build_layers(
     priorities: Dict[str, int],
     symbols: Dict[str, Dict[str, object]],
     linestyles: Dict[str, Dict[str, object]],
+    labels: bool = False,
 ) -> List[Dict[str, object]]:
     """Construct and order Tier‑1 style layers for the chosen palette."""
 
@@ -328,20 +329,53 @@ def build_layers(
                 layout["icon-offset"] = [off_x, off_y]
         if meta.get("rotate"):
             layout["icon-rotate"] = ["coalesce", ["get", "ORIENT"], 0]
-        layers.append(
-            (
-                prio(obj, 52),
-                {
-                    "id": obj,
-                    "type": "symbol",
-                    "source": source,
-                    "source-layer": source_layer,
-                    "filter": ["==", ["get", "OBJL"], obj],
-                    "layout": layout,
-                    "metadata": {"maplibre:s52": f"{obj}-SY({sym_name})"},
+        layer_def: Dict[str, object] = {
+            "id": obj,
+            "type": "symbol",
+            "source": source,
+            "source-layer": source_layer,
+            "filter": ["==", ["get", "OBJL"], obj],
+            "layout": layout,
+            "metadata": {"maplibre:s52": f"{obj}-SY({sym_name})"},
+        }
+        if labels:
+            layer_def.setdefault("layout", {})["text-field"] = [
+                "coalesce",
+                ["get", "OBJNAM"],
+                "",
+            ]
+            layer_def["layout"]["text-font"] = ["Noto Sans Regular"]
+            paint: Dict[str, object] = {
+                "text-color": get_colour(colors, "CHBLK"),
+                "text-halo-color": "#ffffff",
+                "text-halo-width": 1,
+            }
+            layer_def["paint"] = paint
+        layers.append((prio(obj, 52), layer_def))
+
+    layers.append(
+        (
+            prio("LIGHTS", 52),
+            {
+                "id": "LIGHTS-sector",
+                "type": "line",
+                "source": source,
+                "source-layer": source_layer,
+                "filter": [
+                    "all",
+                    ["==", ["get", "OBJL"], "LIGHTS"],
+                    ["has", "SECTR1"],
+                    ["has", "SECTR2"],
+                ],
+                "paint": {
+                    "line-color": get_colour(colors, "CHBLK"),
+                    "line-width": 1,
+                    "line-dasharray": [2, 2],
                 },
-            )
+                "metadata": {"maplibre:s52": "LIGHTS-LS(sector)"},
+            },
         )
+    )
 
     # Caution lines --------------------------------------------------------
     dash_map = {
@@ -433,10 +467,30 @@ def build_layers(
                 ],
                 "layout": {
                     "icon-image": [
-                        "case",
-                        ["has", "hazardIcon"],
-                        ["concat", "{SPRITE_PREFIX}", ["get", "hazardIcon"]],
-                        "",
+                        "concat",
+                        "{SPRITE_PREFIX}",
+                        [
+                            "case",
+                            ["has", "hazardIcon"],
+                            [
+                                "case",
+                                ["==", ["get", "WATLEV"], 2],
+                                ["concat", ["get", "hazardIcon"], "-int"],
+                                ["get", "hazardIcon"],
+                            ],
+                            [
+                                "case",
+                                ["==", ["get", "OBJL"], "WRECKS"],
+                                "DANGER51",
+                                ["==", ["get", "OBJL"], "ROCKS"],
+                                "DANGER01",
+                                ["==", ["get", "OBJL"], "UWTROC"],
+                                "DANGER31",
+                                ["==", ["get", "OBJL"], "OBSTRN"],
+                                "DANGER21",
+                                "DANGER51",
+                            ],
+                        ],
                     ],
                     "icon-allow-overlap": True,
                     "icon-anchor": "center",
@@ -472,8 +526,12 @@ def build_layers(
                 "filter": ["==", ["get", "OBJL"], "SOUNDG"],
                 "layout": {
                     "text-field": [
-                        "to-string",
-                        ["coalesce", ["get", "VALSOU"], ["get", "VAL"]],
+                        "number-format",
+                        [
+                            "to-number",
+                            ["coalesce", ["get", "VALSOU"], ["get", "VAL"]],
+                        ],
+                        {"minFractionDigits": 0, "maxFractionDigits": 1},
                     ],
                     "text-font": ["Noto Sans Regular"],
                     "text-size": 12,
@@ -509,6 +567,42 @@ def _norm_dash(pattern: str | None) -> List[float] | None:
         "dashdot": [4, 2, 1, 2],
     }
     return dash_map.get(pattern or "solid")
+
+
+def _light_label_expr() -> List[object]:
+    """Compose a basic light label expression from common attributes."""
+    return [
+        "concat",
+        ["coalesce", ["get", "LITCHR"], ""],
+        [
+            "case",
+            ["any", ["has", "COLOUR"], ["has", "COLOUR2"], ["has", "COLPAT"]],
+            [
+                "concat",
+                " ",
+                [
+                    "coalesce",
+                    ["get", "COLOUR"],
+                    ["get", "COLOUR2"],
+                    ["get", "COLPAT"],
+                    "",
+                ],
+            ],
+            "",
+        ],
+        [
+            "case",
+            ["has", "HEIGHT"],
+            ["concat", " ", ["to-string", ["get", "HEIGHT"]], "m"],
+            "",
+        ],
+        [
+            "case",
+            ["has", "RANGE"],
+            ["concat", " ", ["to-string", ["get", "RANGE"]], "M"],
+            "",
+        ],
+    ]
 
 
 def generate_layers_from_lookups(
@@ -566,11 +660,7 @@ def generate_layers_from_lookups(
             }
             if labels and objl == "LIGHTS":
                 layer.setdefault("layout", {})
-                layer["layout"]["text-field"] = [
-                    "coalesce",
-                    ["get", "LITNAM"],
-                    "",
-                ]
+                layer["layout"]["text-field"] = _light_label_expr()
                 layer["layout"]["text-font"] = ["Noto Sans Regular"]
                 layer.setdefault("paint", {})
                 layer["paint"]["text-color"] = get_colour(colors, "CHBLK")
@@ -708,6 +798,7 @@ def main() -> None:  # pragma: no cover - CLI wrapper
         priorities,
         symbols,
         linestyles,
+        labels=args.labels,
     )
 
     if args.auto_cover:

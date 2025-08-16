@@ -68,7 +68,7 @@ def main() -> int:  # pragma: no cover - CLI helper
         try:
             proc = subprocess.run(["node", str(VALIDATE), str(out)], check=False)
             if proc.returncode != 0:
-                print("Validator not installed or failed; skipping", file=sys.stderr)
+                print("maplibre-gl-style-spec missing; skipping validation", file=sys.stderr)
         except FileNotFoundError:
             print("Node not installed; skipping validation", file=sys.stderr)
     print("Built styles:", ", ".join(palettes))

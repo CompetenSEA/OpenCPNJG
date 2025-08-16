@@ -51,14 +51,20 @@ jobs:
       - name: Enforce coverage thresholds
         run: |
           python - <<'PY'
-import json,sys
+import json,sys,math
 s=json.load(open('VDR/server-styling/dist/coverage/style_coverage.json'))
+p=json.load(open('VDR/server-styling/dist/coverage/portrayal_coverage.json'))
 c=json.load(open('VDR/server-styling/dist/coverage/s57_catalogue.json'))
 presence_ok = s.get('coveredByStyle') == s.get('totalLookups')
 ignored = set(c.get('ignoredClasses', []))
 total = c.get('totalClasses',0) - len(ignored)
 handled = c.get('handledByStyles',0)
-sys.exit(0 if presence_ok and (handled/total if total else 0)>=0.99 else 1)
+bt=p.get('byType',{})
+bb=p.get('byBucket',{})
+ok = presence_ok and (handled/total if total else 0)>=0.99
+ok = ok and bt.get('Point',0)>=0.85 and bt.get('Line',0)>=0.70 and bt.get('Area',0)>=0.60
+ok = ok and bb.get('Lights',0)>=0.85 and bb.get('Navaids',0)>=0.80 and bb.get('Depths',0)>=0.70 and bb.get('Hazards',0)>=0.70
+sys.exit(0 if ok else 1)
 PY
       - name: Docs freshness
         run: |

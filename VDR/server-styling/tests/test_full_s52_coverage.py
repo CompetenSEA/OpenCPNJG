@@ -1,5 +1,9 @@
 import json, subprocess, sys, shutil
 from pathlib import Path
+import json
+import subprocess
+import shutil
+import sys
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -117,3 +121,16 @@ def test_presence_coverage_real_assets() -> None:
         pytest.skip("coverage data missing")
     data = json.loads(cov_path.read_text())
     assert data.get("coveredByStyle") == data.get("totalLookups")
+
+
+def test_portrayal_thresholds() -> None:
+    path = ROOT / "server-styling" / "dist" / "coverage" / "portrayal_coverage.json"
+    if not path.exists():
+        pytest.skip("portrayal coverage missing")
+    data = json.loads(path.read_text())
+    prev_path = path.with_name("portrayal_coverage.prev.json")
+    if prev_path.exists():
+        prev = json.loads(prev_path.read_text())
+        assert data.get("coverage", 0) >= prev.get("coverage", 0)
+    assert data.get("byType")
+    assert data.get("byBucket")

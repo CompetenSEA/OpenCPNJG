@@ -55,8 +55,8 @@ def test_coverage_floor(tmp_path: Path) -> None:
         ]
     )
     prev = json.loads(baseline.read_text())
-    curr = json.loads(
-        (ROOT / "server-styling" / "dist" / "coverage" / "style_coverage.json").read_text()
-    )
+    curr_path = ROOT / "server-styling" / "dist" / "coverage" / "style_coverage.json"
+    curr = json.loads(curr_path.read_text())
     assert curr["coveredByStyle"] >= prev.get("coveredByStyle", 0) + 3
+    curr_path.write_text(json.dumps(prev, indent=2, sort_keys=True))
 
