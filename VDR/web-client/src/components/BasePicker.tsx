@@ -37,13 +37,8 @@ export const BasePicker = ({ api }: Props) => {
       .catch(() => {});
   }, []);
   function select(kind: 'osm' | 'geotiff' | 'enc', id?: string) {
-    if (kind === 'enc') {
-      api.setBase('enc', id);
-      setBase('enc');
-    } else {
-      api.setBase(kind, id);
-      setBase(kind);
-    }
+    setBase(kind === 'enc' ? 'enc' : kind);
+    api.setBase(kind, id);
   }
   return null;
 };

@@ -1,9 +1,10 @@
 """Minimal FastAPI tile server used for tests and development.
 
 The server intentionally returns placeholder data – a 1×1 PNG for raster tiles
-and a tiny Mapbox Vector Tile containing a single point feature.  The goal is to
-exercise the caching, routing and static file serving infrastructure without the
-full chart rendering pipeline.
+and a tiny Mapbox Vector Tile containing a single point feature.  Middleware
+enables CORS and gzip; tile responses carry `ETag` and `Cache-Control` headers to
+exercise caching, routing and static file serving without the full rendering
+pipeline.
 """
 
 from __future__ import annotations

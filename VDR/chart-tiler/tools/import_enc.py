@@ -48,13 +48,14 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--minzoom", type=int, default=5)
     ap.add_argument("--maxzoom", type=int, default=14)
     args = ap.parse_args(argv)
-    import_s57(
+    out = import_s57(
         args.src,
         dataset_id=args.id,
         respect_scamin=args.respect_scamin,
         minzoom=args.minzoom,
         maxzoom=args.maxzoom,
     )
+    print(out)
 
 
 if __name__ == "__main__":

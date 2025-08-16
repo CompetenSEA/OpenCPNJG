@@ -1,22 +1,21 @@
-# Map Pipeline
+# Map pipeline
 
 ## Overview
-Import scripts convert ENC, CM93 and GeoTIFF sources into MBTiles or Cloud Optimised GeoTIFFs. A registry scans these artefacts and exposes datasets to a FastAPI tileserver which streams tiles to the web client.
+Import charts, register them, serve tiles and consume them in the web client. ENC, CM93 and GeoTIFF sources are ingested to MBTiles/COG, discovered by the registry and exposed through HTTP tile APIs used by MapLibre.
 
 ## Components
-- **server-styling** – builds S-52 derived styles and sprites served at `/style/*` and `/sprites/*`.
-- **chart-tiler** – FastAPI service providing `/charts`, tile routes and admin helpers.
-- **web-client** – React/MapLibre UI consuming the tile APIs.
+- **server-styling** – builds S-52 styles and sprites.
+- **chart-tiler** – FastAPI tile server and registry tools.
+- **web-client** – React front end using MapLibre.
 
 ## Data flow
-1. `tools/import_enc.py`/`convert_geotiff.py` create MBTiles/COG files.
-2. `registry.py` scans directories, storing records in `registry.sqlite`.
-3. `/charts` summarises available datasets.
-4. Tile routes serve ENC vectors (`/tiles/enc/{ds}/{z}/{x}/{y}?fmt=mvt`) and GeoTIFF rasters (`/tiles/geotiff/{id}/{z}/{x}/{y}.png`).
-5. The client selects bases and applies mariner settings via `createMapAPI`.
+1. ENC/CM93/GeoTIFF sources are converted to MBTiles or COG.
+2. `registry.scan` walks the data directories and records metadata in `registry.sqlite`.
+3. `/charts` exposes available datasets.
+4. Tile routes serve vector and raster tiles consumed by the client.
 
 ## Setup
-Stage styling assets under `server-styling/dist`. Key environment variables:
+Stage `server-styling/dist` with built styles and sprites. Useful environment variables:
 `ENC_DIR`, `MBTILES_PATH`, `MBTILES_CACHE_SIZE`, `REDIS_URL`, `REDIS_TTL`, `OSM_USE_COMMUNITY`.
 
 ## Build/Run
@@ -61,7 +60,7 @@ CREATE INDEX IF NOT EXISTS idx_charts_kind ON charts(kind);
 CREATE INDEX IF NOT EXISTS idx_charts_name ON charts(name);
 CREATE INDEX IF NOT EXISTS idx_artifacts_chart ON artifacts(chart_id);
 ```
-Pragmas: `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000`. Backup via `sqlite3 registry.sqlite ".backup registry.bak"`.
+Pragmas: `PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;`. Backup via `sqlite3 registry.sqlite ".backup registry.bak"`.
 
 ## Tile APIs
 - `GET /charts` → `{ base: [..], enc: { datasets: [...] } }`
@@ -71,7 +70,11 @@ Pragmas: `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000`. Backup v
 - `GET /metrics`, `GET /healthz`
 
 ## Frontend hooks
-`createMapAPI` exposes `setBase`, `setDataset`, `setTheme` and `setMarinerParams` to manage datasets, base layers and S-52 mariner settings.
+`createMapAPI` exposes:
+- `setBase(kind, id?)`
+- `setDataset(id, bounds?)`
+- `setTheme(theme)`
+- `setMarinerParams(p)`
 
 ## Testing
 ```bash
@@ -84,10 +87,10 @@ npm test --prefix VDR/web-client
 ```
 
 ## CI/CD
-Lint and unit/web tests gate Pull Requests via the commands above.
+Unit tests and style coverage run on CI; registry and style assets must be present and coverage remains at 100%.
 
 ## Troubleshooting
-- Missing `ETag` or caching headers: ensure proxy strips none and Redis is reachable.
-- CORS errors: verify `CORSMiddleware` is active.
-- Empty tiles: confirm dataset ID and tile coordinates; `/config/datasource` lists available datasets.
-- Styling issues: check assets under `server-styling/dist`.
+- Missing `ETag` or `Cache-Control` headers: ensure tileserver middleware is active.
+- CORS errors: confirm `allow_origins=["*"]`.
+- Empty tiles: check dataset IDs and registry scan.
+- Missing assets: rebuild `server-styling/dist` and rerun import tools.

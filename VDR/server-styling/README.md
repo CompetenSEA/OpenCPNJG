@@ -14,7 +14,7 @@ node VDR/server-styling/tools/validate_style.mjs VDR/server-styling/dist/style.s
 ```
 Generated styles live under `server-styling/dist/` with day/dusk/night palettes.
 
-The tileserver serves these assets at `/style/s52.{palette}.json` and `/sprites/s52-day.{json|png}` with caching headers.
+The tileserver serves these assets at `/style/s52.{palette}.json` and `/sprites/s52-day.{json|png}` with ETag and caching headers.
 
 ## Coverage tools
 ```

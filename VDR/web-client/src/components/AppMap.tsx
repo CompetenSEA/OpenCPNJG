@@ -30,6 +30,7 @@ export function createMapAPI(map: any) {
         type: 'vector',
         tiles: [`/tiles/enc/${id}/{z}/{x}/{y}?${qs}`],
       };
+      style.sources.base = style.sources.enc;
       map.setStyle(style);
       if (bounds && map.fitBounds) {
         map.fitBounds([
