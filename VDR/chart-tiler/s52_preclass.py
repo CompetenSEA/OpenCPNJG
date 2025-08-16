@@ -130,6 +130,50 @@ class S52PreClassifier:
         # LNDARE/COALNE and other objects use static styling
         return {}
 
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _geom_length(geom: Dict[str, Any]) -> float:
+        """Return a simple Euclidean length for GeoJSON geometries."""
+
+        coords = geom.get("coordinates")
+        if geom.get("type") == "LineString" and coords:
+            total = 0.0
+            for (x1, y1), (x2, y2) in zip(coords, coords[1:]):
+                dx = x2 - x1
+                dy = y2 - y1
+                total += (dx * dx + dy * dy) ** 0.5
+            return total
+        return 0.0
+
+    @staticmethod
+    def finalize_tile(contours: list[Dict[str, Any]], cfg: ContourConfig) -> set[int]:
+        """Return indexes of contours to promote to safety role."""
+
+        choices_deeper: list[tuple[float, float, int]] = []
+        choices_shallow: list[tuple[float, float, int]] = []
+        for idx, feat in enumerate(contours):
+            props = feat.get("properties", {})
+            try:
+                depth = float(props.get("VALDCO"))
+            except (TypeError, ValueError):
+                continue
+            if depth == cfg.safety:
+                # Exact match exists – nothing to promote
+                return set()
+            geom = feat.get("geometry", {})
+            length = S52PreClassifier._geom_length(geom)
+            diff = abs(depth - cfg.safety)
+            if depth >= cfg.safety:
+                choices_deeper.append((diff, -length, idx))
+            else:
+                choices_shallow.append((diff, -length, idx))
+
+        pool = choices_deeper or choices_shallow
+        if not pool:
+            return set()
+        _, _, best_idx = min(pool)
+        return {best_idx}
+
     def finalize(self) -> None:
         """Apply post-processing once all features have been classified."""
 
