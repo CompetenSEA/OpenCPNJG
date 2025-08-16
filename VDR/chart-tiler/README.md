@@ -1,69 +1,58 @@
 # Chart Tiler
 
-This module provides a Python based pipeline for converting nautical chart
-datasets into web friendly tile sets. It focuses on S‑57 ENC data but exposes
-hooks to plug in a CM93→S‑57 converter in the future.
+FastAPI service that reads `registry.sqlite` and serves vector/raster tiles from MBTiles or COG sources.
 
-## Features
-
-* Generate **vector tiles** (MBTiles) using `tippecanoe`.
-* Generate **raster tiles** as Cloud Optimised GeoTIFFs using GDAL.
-* Optional SFTP upload helper for deploying to a Hostinger VPS.
-
+## Endpoints
 ```
-python convert_charts.py US5MD11M.000 output/
+GET /charts?kind={enc|geotiff|osm}&q=&page=&pageSize=
+GET /charts/{id}
+GET /tiles/geotiff/{id}/{z}/{x}/{y}.png
+GET /titiler/*
+GET /metrics
+GET /healthz
 ```
 
-The command above produces `US5MD11M.mbtiles` and `US5MD11M.tif` in the
-`output` directory.
+## Cache keys
+Tiles are cached by `{dataset}:{z}/{x}/{y}:{fmt}:{palette}:{safety}:{shallow}:{deep}`. Set `MBTILES_CACHE_SIZE` to tune the in‑memory LRU.
 
-## Metadata ingestion
-
-`ingest_charts.py` reads CM93/S‑57 dictionaries via the `charts_py` bindings and
-populates a `charts.sqlite` database with `object_class`, `attribute_class` and
-`chart_metadata` tables:
-
+## Registry database
+```sql
+-- charts registry
+CREATE TABLE IF NOT EXISTS charts (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL,           -- enc|geotiff|osm
+  name TEXT NOT NULL,
+  path TEXT,
+  url  TEXT,
+  bbox TEXT,
+  minzoom INTEGER,
+  maxzoom INTEGER,
+  updated_at TEXT,
+  tags TEXT,
+  status TEXT
+);
+CREATE TABLE IF NOT EXISTS artifacts (
+  chart_id TEXT,
+  type TEXT,
+  path TEXT,
+  sha256 TEXT,
+  created_at TEXT,
+  PRIMARY KEY(chart_id, type, path)
+);
+CREATE INDEX IF NOT EXISTS idx_charts_kind ON charts(kind);
+CREATE INDEX IF NOT EXISTS idx_charts_name ON charts(name);
+CREATE INDEX IF NOT EXISTS idx_artifacts_chart ON artifacts(chart_id);
 ```
-python ingest_charts.py
+- Migrations: bump `PRAGMA user_version`; keep idempotent SQL in `migrations/`.
+- Pragmas: `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000`.
+- Backup: `sqlite3 registry.sqlite ".backup registry.bak"` before large scans.
+
+## Backup/restore
+Use the `.backup` command above; restore by copying the backup over `registry.sqlite`.
+
+## Tests
 ```
-
-### SQLite schema
-
-The generated ``charts.sqlite`` contains three simple tables used by the tile
-server at runtime:
-
-``object_class``
-: ``id`` (integer primary key), ``acronym`` (e.g. ``BOYSPP``) and human readable
-  ``name``.
-
-``attribute_class``
-: ``id`` (integer primary key), ``acronym`` and ``name`` fields mirroring the
-  S‑57 attribute dictionary.
-
-``chart_metadata``
-: ``key``/``value`` pairs for global information such as the chart edition.
-
-Running the ingestion script multiple times is safe – rows are replaced on
-conflict, keeping the database idempotent.
-
-## FastAPI tile service
-
-`tileserver.py` exposes `/tiles/{z}/{x}/{y}?fmt=png` (or `fmt=mvt`) using only
-the day palette. It keeps an LRU memory cache and can optionally use Redis when
-`REDIS_URL` is set. Prometheus metrics `tile_gen_ms` and `cache_hits` are
-available at `/metrics`.
-
+pytest VDR/chart-tiler/tests/test_convert_geotiff.py
+pytest VDR/chart-tiler/tests/test_registry_scan.py
+pytest VDR/chart-tiler/tests/test_tiles_geotiff.py
 ```
-uvicorn tileserver:app --reload
-```
-
-## Headless render CLI
-
-`render_tile.py z x y` generates a PNG tile for pixel‑diff regression tests:
-
-```
-python render_tile.py 0 0 0 --output tile.png
-```
-
-Use the resulting image as a baseline for comparison in CI, storing it outside
-of the repository.
