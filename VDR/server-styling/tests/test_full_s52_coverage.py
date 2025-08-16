@@ -78,6 +78,10 @@ def test_auto_cover(tmp_path: Path) -> None:
     style = json.loads(style_path.read_text())
     ids = {lyr["id"] for lyr in style["layers"]}
     assert {"OBJPT", "OBJLN", "OBJAR"} <= ids
+    meta = {lyr["id"]: lyr.get("metadata", {}).get("maplibre:s52") for lyr in style["layers"]}
+    assert meta.get("OBJPT") == "OBJPT-SY(PNT1)"
+    assert meta.get("OBJLN").startswith("OBJLN-LS(")
+    assert meta.get("OBJAR") in {"OBJAR-AP(PAT1)", "OBJAR-AC(LANDA)"}
     node = shutil.which("node")
     if node:
         try:

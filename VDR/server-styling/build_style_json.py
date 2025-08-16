@@ -458,11 +458,11 @@ def generate_layers_from_lookups(
                         layout["icon-offset"] = [off_x, off_y]
                 if meta.get("rotate"):
                     layout["icon-rotate"] = ["coalesce", ["get", "ORIENT"], 0]
-                metadata["maplibre:s52"] = f"{objl}-{sym}"
+                metadata["maplibre:s52"] = f"{objl}-SY({sym})"
             else:
                 layout["icon-image"] = "marker-15"
                 fallback = "missingSymbol"
-                metadata["maplibre:s52"] = f"{objl}-fallback"
+                metadata["maplibre:s52"] = f"{objl}-stub"
             layer = {
                 "id": objl,
                 "type": "symbol",
@@ -491,12 +491,13 @@ def generate_layers_from_lookups(
                 dash = _norm_dash(ls_meta.get("pattern"))
                 if dash:
                     paint["line-dasharray"] = dash
+                metadata["maplibre:s52"] = f"{objl}-LS({color_token or pattern_name or ''})"
             else:
                 if pattern_name:
                     fallback = "missingLineStyle"
+                metadata["maplibre:s52"] = f"{objl}-stub"
             paint["line-color"] = get_colour(colors, color_token or "CHBLK")
             paint["line-width"] = width
-            metadata["maplibre:s52"] = f"{objl}-{color_token or pattern_name or 'fallback'}"
             layer = {
                 "id": objl,
                 "type": "line",
@@ -514,12 +515,17 @@ def generate_layers_from_lookups(
             paint: Dict[str, object] = {}
             if pat and pat in patterns and patterns[pat].get("type") == "bitmap":
                 paint["fill-pattern"] = ["concat", "{SPRITE_PREFIX}", pat]
-                metadata["maplibre:s52"] = f"{objl}-{pat}"
+                metadata["maplibre:s52"] = f"{objl}-AP({pat})"
+            elif color_token:
+                paint["fill-color"] = get_colour(colors, color_token)
+                metadata["maplibre:s52"] = f"{objl}-AC({color_token})"
             else:
                 if pat:
                     fallback = "missingPattern"
-                paint["fill-color"] = get_colour(colors, color_token or "LANDA")
-                metadata["maplibre:s52"] = f"{objl}-{color_token or 'fallback'}"
+                else:
+                    fallback = "missingColor"
+                paint["fill-color"] = get_colour(colors, "LANDA")
+                metadata["maplibre:s52"] = f"{objl}-stub"
             layer = {
                 "id": objl,
                 "type": "fill",
