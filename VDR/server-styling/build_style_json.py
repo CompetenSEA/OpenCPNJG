@@ -335,6 +335,56 @@ def build_layers(
             layer_def["paint"] = paint
         layers.append((prio(obj, 52), layer_def))
 
+    if labels:
+        name_objs = ["BCNLAT", "BCNCAR", "BCNISD", "BOYISD", "BOYLAT", "BOYCAR", "RTPBCN"]
+        for obj in name_objs:
+            layers.append(
+                (
+                    prio(obj, 53),
+                    {
+                        "id": f"{obj}-name",
+                        "type": "symbol",
+                        "source": source,
+                        "source-layer": source_layer,
+                        "minzoom": 11,
+                        "filter": ["==", ["get", "OBJL"], obj],
+                        "layout": {
+                            "text-field": [
+                                "coalesce",
+                                ["get", "OBJNAM"],
+                                ["get", "NOBJNM"],
+                                "",
+                            ],
+                            "text-font": ["Noto Sans Regular"],
+                            "text-size": [
+                                "interpolate",
+                                ["linear"],
+                                ["zoom"],
+                                10,
+                                10,
+                                14,
+                                12,
+                                17,
+                                14,
+                            ],
+                            "text-allow-overlap": False,
+                            "symbol-sort-key": [
+                                "coalesce",
+                                ["get", "scamin"],
+                                ["get", "rank"],
+                                0,
+                            ],
+                        },
+                        "paint": {
+                            "text-color": get_colour(colors, "CHBLK"),
+                            "text-halo-color": "#ffffff",
+                            "text-halo-width": 1,
+                        },
+                        "metadata": {"maplibre:s52": "NAVAID-SY(nameLabel)"},
+                    },
+                )
+            )
+
     layers.append(
         (
             prio("LIGHTS", 52),
@@ -516,8 +566,19 @@ def build_layers(
                         {"minFractionDigits": 0, "maxFractionDigits": 1},
                     ],
                     "text-font": ["Noto Sans Regular"],
-                    "text-size": 12,
+                    "text-size": [
+                        "interpolate",
+                        ["linear"],
+                        ["zoom"],
+                        10,
+                        9,
+                        13,
+                        11,
+                        16,
+                        13,
+                    ],
                 },
+                "minzoom": 10,
                 "paint": {
                     "text-color": [
                         "case",
@@ -869,6 +930,7 @@ def main() -> None:  # pragma: no cover - CLI wrapper
             args.source_name: {"type": "vector", "tiles": [args.tiles_url]}
         },
         "layers": layers,
+        "metadata": {"maplibre:s52.palette": args.palette},
     }
 
     # Basic validation ------------------------------------------------------

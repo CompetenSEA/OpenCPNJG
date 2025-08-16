@@ -18,8 +18,8 @@ DIST = ROOT.parent / "server-styling" / "dist"
 (DIST / "sprites").mkdir(parents=True, exist_ok=True)
 (DIST / "assets" / "s52").mkdir(parents=True, exist_ok=True)
 
-(DIST / "style.s52.day.json").write_text(
-    json.dumps(
+def _make_style(color: str) -> str:
+    return json.dumps(
         {
             "version": 8,
             "sources": {},
@@ -31,11 +31,19 @@ DIST = ROOT.parent / "server-styling" / "dist"
                 {"id": "DEPCNT-lowacc", "type": "line", "paint": {}},
                 {"id": "DEPCNT-safety", "type": "line", "paint": {}},
                 {"id": "COALNE", "type": "line", "paint": {}},
-                {"id": "SOUNDG", "type": "symbol", "layout": {}, "paint": {}},
+                {
+                    "id": "SOUNDG",
+                    "type": "symbol",
+                    "layout": {},
+                    "paint": {"text-color": color},
+                },
             ],
         }
     )
-)
+
+(DIST / "style.s52.day.json").write_text(_make_style("#010203"))
+(DIST / "style.s52.dusk.json").write_text(_make_style("#020202"))
+(DIST / "style.s52.night.json").write_text(_make_style("#040506"))
 (DIST / "sprites" / "s52-day.json").write_text("{}")
 (DIST / "assets" / "s52" / "rastersymbols-day.png").write_bytes(
     base64.b64decode(
@@ -67,6 +75,8 @@ def test_tile_endpoint_mvt() -> None:
 
 def test_style_and_sprite_endpoints() -> None:
     assert client.get("/style/s52.day.json").status_code == 200
+    assert client.get("/style/s52.dusk.json").status_code == 200
+    assert client.get("/style/s52.night.json").status_code == 200
     assert client.get("/sprites/s52-day.json").status_code == 200
     assert client.get("/sprites/s52-day.png").status_code == 200
 
@@ -86,6 +96,14 @@ def test_style_structure() -> None:
     ]
     for eid in expected:
         assert eid in layer_ids
+
+
+def test_style_palettes_differ() -> None:
+    day = json.loads(client.get("/style/s52.day.json").text)
+    night = json.loads(client.get("/style/s52.night.json").text)
+    day_col = next(lyr for lyr in day["layers"] if lyr["id"] == "SOUNDG")["paint"]["text-color"]
+    night_col = next(lyr for lyr in night["layers"] if lyr["id"] == "SOUNDG")["paint"]["text-color"]
+    assert day_col != night_col
 
 
 def test_metrics_endpoint() -> None:

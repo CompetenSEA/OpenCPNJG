@@ -37,6 +37,12 @@ except Exception:  # pragma: no cover
 from datasource_stub import features_for_tile
 from mvt_builder import encode_mvt
 from s52_preclass import S52PreClassifier, ContourConfig
+try:  # pragma: no cover - optional pillow
+    from raster_mvp import render_tile as render_raster, RasterMVPUnavailable
+except Exception:  # pragma: no cover
+    render_raster = None  # type: ignore
+    class RasterMVPUnavailable(Exception):
+        pass
 try:
     from datasource_mbtiles import MBTilesDataSource  # type: ignore
 except Exception:  # pragma: no cover - optional
@@ -107,11 +113,20 @@ def _render_mvt(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
     classifier = _get_classifier(cfg)
 
     feats = []
+    contours = []
     for feat in features_for_tile(bbox, z, x, y):
         props = dict(feat.get("properties", {}))
         objl = props.get("OBJL", "")
         props.update(classifier.classify(objl, props))
-        feats.append({"geometry": feat["geometry"], "properties": props})
+        feat_dict = {"geometry": feat["geometry"], "properties": props}
+        feats.append(feat_dict)
+        if objl == "DEPCNT":
+            contours.append(feat_dict)
+    mark = S52PreClassifier.finalize_tile(contours, cfg)
+    for idx in mark:
+        props = contours[idx]["properties"]
+        props["role"] = "safety"
+        props["isSafety"] = True
 
     with _tile_gen_ms.time():
         return encode_mvt(feats)
@@ -119,8 +134,32 @@ def _render_mvt(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
 
 @lru_cache(maxsize=512)
 def _render_png(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:  # pragma: no cover - trivial
-    _ = (cfg, z, x, y)  # unused, but part of cache key
+    _ = (cfg, z, x, y)
     return PNG_1X1
+
+
+@lru_cache(maxsize=256)
+def _render_png_mvp(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
+    if not render_raster:
+        raise RasterMVPUnavailable("Pillow missing")
+    bbox = _tile_bbox(z, x, y)
+    classifier = _get_classifier(cfg)
+    feats = []
+    contours = []
+    for feat in features_for_tile(bbox, z, x, y):
+        props = dict(feat.get("properties", {}))
+        objl = props.get("OBJL", "")
+        props.update(classifier.classify(objl, props))
+        feat_dict = {"geometry": feat["geometry"], "properties": props}
+        feats.append(feat_dict)
+        if objl == "DEPCNT":
+            contours.append(feat_dict)
+    mark = S52PreClassifier.finalize_tile(contours, cfg)
+    for idx in mark:
+        props = contours[idx]["properties"]
+        props["role"] = "safety"
+        props["isSafety"] = True
+    return render_raster(z, x, y, feats, _day_colors)
 
 
 def _get_from_redis(key: str) -> Optional[bytes]:  # pragma: no cover - depends on redis
@@ -216,7 +255,15 @@ def tiles(
             content=cached, media_type=media, headers={"X-Tile-Cache": cache_state}
         )
 
-    if fmt == "png":
+    if fmt == "png-mvp" or (fmt == "png" and os.environ.get("RASTER_MVP") == "1"):
+        before = _render_png_mvp.cache_info().hits
+        try:
+            data = _render_png_mvp(cfg, z, x, y)
+        except RasterMVPUnavailable:
+            data = PNG_1X1
+        after = _render_png_mvp.cache_info().hits
+        media_type = "image/png"
+    elif fmt == "png":
         before = _render_png.cache_info().hits
         data = _render_png(cfg, z, x, y)
         after = _render_png.cache_info().hits
@@ -262,6 +309,18 @@ def get_datasource_config() -> Dict[str, object]:
 @app.get("/style/s52.day.json")
 def style() -> Response:
     path = STYLING_DIST / "style.s52.day.json"
+    return Response(path.read_bytes(), media_type="application/json")
+
+
+@app.get("/style/s52.dusk.json")
+def style_dusk() -> Response:
+    path = STYLING_DIST / "style.s52.dusk.json"
+    return Response(path.read_bytes(), media_type="application/json")
+
+
+@app.get("/style/s52.night.json")
+def style_night() -> Response:
+    path = STYLING_DIST / "style.s52.night.json"
     return Response(path.read_bytes(), media_type="application/json")
 
 
