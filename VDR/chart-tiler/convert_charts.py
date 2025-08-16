@@ -170,7 +170,7 @@ def s57_to_cog(s57_path: str, output_tif: str) -> None:
 def s57_to_mbtiles(
     s57_path: str,
     output_mbtiles: str,
-    respect_scamin: bool = False,
+    respect_scamin: bool = True,
     scamin_map: Optional[Dict[int, int]] = None,
 ) -> None:
     """Generate vector tiles from an S-57 dataset using tippecanoe.
@@ -285,9 +285,9 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     parser.add_argument("--password", help="SFTP password")
     parser.add_argument("--remote-dir", default=".", help="Remote directory")
     parser.add_argument(
-        "--respect-scamin",
+        "--no-respect-scamin",
         action="store_true",
-        help="Encode tippecanoe minzoom from SCAMIN",
+        help="Disable SCAMIN to tippecanoe minzoom mapping",
     )
     args = parser.parse_args(argv)
 
@@ -306,7 +306,11 @@ def main(argv: Optional[Iterable[str]] = None) -> int:
     mbtiles = out_dir / f"{stem}.mbtiles"
     cog = out_dir / f"{stem}.tif"
 
-    s57_to_mbtiles(str(s57_path), str(mbtiles), respect_scamin=args.respect_scamin)
+    s57_to_mbtiles(
+        str(s57_path),
+        str(mbtiles),
+        respect_scamin=not args.no_respect_scamin,
+    )
     s57_to_cog(str(s57_path), str(cog))
 
     if args.upload:
