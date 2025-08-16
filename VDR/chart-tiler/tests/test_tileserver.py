@@ -6,6 +6,7 @@ import base64
 import json
 from pathlib import Path
 import sys
+import importlib
 
 from fastapi.testclient import TestClient
 
@@ -92,3 +93,9 @@ def test_metrics_endpoint() -> None:
     assert r.status_code == 200
     assert b"tile_gen_ms" in r.content
 
+
+def test_metrics_endpoint_idempotent_import() -> None:
+    mod = importlib.reload(tileserver)
+    new_client = TestClient(mod.app)
+    r = new_client.get("/metrics")
+    assert r.status_code == 200

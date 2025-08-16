@@ -21,7 +21,13 @@ from typing import Dict, Optional
 
 from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Counter,
+    Histogram,
+    CollectorRegistry,
+    generate_latest,
+)
 
 try:  # pragma: no cover - redis optional
     import redis
@@ -45,8 +51,11 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"])
 logger = logging.getLogger("tileserver")
 
-_tile_gen_ms = Histogram("tile_gen_ms", "Time spent generating tiles", unit="ms")
-_cache_hits = Counter("cache_hits", "Cache hits")
+_prom_registry = CollectorRegistry()
+_tile_gen_ms = Histogram(
+    "tile_gen_ms", "Time spent generating tiles", unit="ms", registry=_prom_registry
+)
+_cache_hits = Counter("cache_hits", "Cache hits", registry=_prom_registry)
 _redis: Optional["redis.Redis"] = (
     redis.from_url(os.environ["REDIS_URL"]) if redis and "REDIS_URL" in os.environ else None
 )
@@ -270,5 +279,4 @@ def sprite_png() -> Response:
 
 @app.get("/metrics")
 def metrics() -> Response:
-    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
-
+    return Response(generate_latest(_prom_registry), media_type=CONTENT_TYPE_LATEST)
