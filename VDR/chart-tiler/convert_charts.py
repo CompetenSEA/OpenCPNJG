@@ -172,6 +172,8 @@ def s57_to_mbtiles(
     output_mbtiles: str,
     respect_scamin: bool = True,
     scamin_map: Optional[Dict[int, int]] = None,
+    minzoom: int = 5,
+    maxzoom: int = 14,
 ) -> None:
     """Generate vector tiles from an S-57 dataset using tippecanoe.
 
@@ -214,13 +216,36 @@ def s57_to_mbtiles(
             "tippecanoe",
             "-o",
             output_mbtiles,
-            "-zg",
+            f"--minimum-zoom={minzoom}",
+            f"--maximum-zoom={maxzoom}",
             "--drop-densest-as-needed",
         ]
         for attr in _named_attributes() + ["SCAMIN"]:
             tippecanoe_cmd.extend(["--include", attr])
         tippecanoe_cmd.append(str(geojson))
         subprocess.check_call(tippecanoe_cmd)
+
+
+def encode_s57_to_mbtiles(
+    input_000: str,
+    output_mbtiles: str,
+    respect_scamin: bool = True,
+    minzoom: int = 5,
+    maxzoom: int = 14,
+) -> None:
+    """Public helper used by the operator runbook and tests.
+
+    The function simply forwards to :func:`s57_to_mbtiles` while exposing only
+    the knobs required for the phase‑12 tasks.
+    """
+
+    s57_to_mbtiles(
+        input_000,
+        output_mbtiles,
+        respect_scamin=respect_scamin,
+        minzoom=minzoom,
+        maxzoom=maxzoom,
+    )
 
 
 # ---------------------------------------------------------------------------

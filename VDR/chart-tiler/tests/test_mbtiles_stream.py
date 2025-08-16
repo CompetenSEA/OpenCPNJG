@@ -48,6 +48,7 @@ def test_mbtiles_stream(tmp_path, monkeypatch):
     assert spec.loader is not None
     spec.loader.exec_module(tileserver)
     client = TestClient(tileserver.app)
-    r = client.get('/tiles/cm93/0/0/0?fmt=mvt')
+    r = client.get('/tiles/enc/0/0/0?fmt=mvt')
     assert r.status_code == 200
     assert r.content == tile
+    assert r.headers['content-type'] == 'application/x-protobuf'

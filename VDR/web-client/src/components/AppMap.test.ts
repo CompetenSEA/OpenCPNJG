@@ -4,7 +4,7 @@ import { createMapAPI } from './AppMap';
 function mockMap() {
   return {
     layout: [] as any[],
-    style: { sources: { cm93: { tiles: ['old'] } } },
+    style: { sources: { enc: { tiles: ['old'] } } },
     setLayoutProperty(id: string, prop: string, value: string) {
       this.layout.push([id, prop, value]);
     },
@@ -23,5 +23,5 @@ const api = createMapAPI(map);
 api.toggleLayer('SOUNDG', false);
 assert.deepStrictEqual(map.layout[0], ['SOUNDG', 'visibility', 'none']);
 api.setMarinerParams({ safety: 12 });
-assert.ok(map.last.sources.cm93.tiles[0].includes('safety=12'));
+assert.ok(map.last.sources.enc.tiles[0].includes('safety=12'));
 console.log('ok');

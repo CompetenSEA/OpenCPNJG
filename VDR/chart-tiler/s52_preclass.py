@@ -37,6 +37,10 @@ class S52PreClassifier:
     def classify(self, objl: str, props: Dict[str, Any]) -> Dict[str, Any]:
         """Return style helper attributes based on object and properties."""
         result: Dict[str, Any] = {}
+
+        scamin = props.get("SCAMIN")
+        if isinstance(scamin, (int, float)):
+            result["scamin"] = scamin
         try:
             if float(props.get("QUAPOS", 0)) >= 2:
                 result["isLowAcc"] = True

@@ -11,6 +11,6 @@
     "zustand": "^4.5.2"
   },
   "scripts": {
-    "test": "TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/AppMap.test.ts && TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/test_appmap_bases.spec.ts && TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/__tests__/base_picker.spec.ts"
+    "test": "TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/AppMap.test.ts && TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/test_appmap_bases.spec.ts && TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/__tests__/base_picker.spec.ts && TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/__tests__/AppMap.enc.spec.ts"
   }
 }
