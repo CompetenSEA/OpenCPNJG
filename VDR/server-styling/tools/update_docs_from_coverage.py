@@ -23,6 +23,8 @@ def render(
     portrayal_pct = portrayal.get("coverage", 0.0) * 100
     portrayal_missing = portrayal.get("portrayalMissing", [])
     _sample = portrayal.get("sample", [])  # unused but reserved for future use
+    by_type = portrayal.get("byType", {})
+    by_bucket = portrayal.get("byBucket", {})
     missing_block = "\n".join(f"- {m}" for m in missing[:limit]) or "(none)"
     symbols_block = "\n".join(f"- {s}" for s in sorted(symbols)[:limit]) or "(none)"
     lines = [
@@ -31,8 +33,14 @@ def render(
         f"| total lookups | {total} |",
         f"| presence coverage | {presence_pct:.1f}% |",
         f"| portrayal coverage | {portrayal_pct:.1f}% |",
-        f"| missing | {len(missing)} |",
     ]
+    for key, val in by_type.items():
+        lines.append(f"| {key.lower()} portrayal | {val*100:.1f}% |")
+    for key, val in by_bucket.items():
+        lines.append(f"| {key.lower()} portrayal | {val*100:.1f}% |")
+    lines.append(
+        f"| missing | {len(missing)} |",
+    )
     prev_path = coverage_path.with_name("style_coverage.prev.json")
     if prev_path.exists():
         prev = json.loads(prev_path.read_text())

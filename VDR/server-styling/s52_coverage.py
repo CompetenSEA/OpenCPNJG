@@ -124,12 +124,34 @@ def main() -> None:  # pragma: no cover - CLI helper
         lk = lookup_by_type.get(geom, set())
         st = style_by_type.get(geom, set()) - fallback_objs
         by_type[key] = (len(st) / len(lk)) if lk else 0.0
+
+    bucket_defs = {
+        "Lights": {"LIGHTS"},
+        "Navaids": {"BCNLAT", "BCNCAR", "BCNISD", "BOYISD", "BOYLAT", "BOYCAR"},
+        "Depths": {"DEPARE", "DEPCNT", "SOUNDG"},
+        "Hazards": {"WRECKS", "ROCKS", "UWTROC", "OBSTRN"},
+    }
+    all_bucket_objs = set().union(*bucket_defs.values())
+    bucket_defs["Areas"] = lookup_objs - all_bucket_objs
+    by_bucket: Dict[str, float] = {}
+    for name, objs in bucket_defs.items():
+        lk = objs & lookup_objs
+        st = (lk & style_objs) - fallback_objs
+        by_bucket[name] = (len(st) / len(lk)) if lk else 0.0
+
     portrayal = {
         "coverage": (portrayed / len(lookup_objs)) if lookup_objs else 0.0,
         "portrayalMissing": sorted(fallback_objs),
         "sample": sorted(fallback_objs)[:25],
         "byType": by_type,
+        "byBucket": by_bucket,
     }
+    prev_portrayal = None
+    if portrayal_path.exists():
+        prev_portrayal = json.loads(portrayal_path.read_text())
+        portrayal_path.with_name("portrayal_coverage.prev.json").write_text(
+            json.dumps(prev_portrayal, indent=2, sort_keys=True)
+        )
     portrayal_path.write_text(json.dumps(portrayal, indent=2, sort_keys=True))
 
     print("Style coverage:")
