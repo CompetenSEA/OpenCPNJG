@@ -1,4 +1,5 @@
 # Generated assets and binary artefacts
+dist/assets/
 dist/assets/s52/
 dist/sprites/*.png
 dist/*.png
