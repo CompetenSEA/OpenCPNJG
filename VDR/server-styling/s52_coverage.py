@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Dict, Set
 
 from s52_xml import (
     parse_day_colors,
@@ -12,6 +14,20 @@ from s52_xml import (
     parse_patterns,
     parse_lookups,
 )
+
+
+def parse_s57_catalogue(path: Path) -> Dict[str, Set[str]]:
+    catalogue: Dict[str, Set[str]] = {}
+    if not path or not path.exists():
+        return catalogue
+    with path.open(newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            objl = row.get("Acronym") or row.get("acronym")
+            if not objl:
+                continue
+            catalogue[objl] = set((row.get("Primitives") or row.get("primitives") or "P").split(";"))
+    return catalogue
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,6 +64,7 @@ def main() -> None:  # pragma: no cover - CLI helper
     layers: list[dict[str, str]] = []
     fallback_objs: set[str] = set()
     symbols_seen: set[str] = set()
+    style_by_type: Dict[str, Set[str]] = {"symbol": set(), "line": set(), "fill": set()}
     for style_path in dist_dir.glob("style.s52.*.json"):
         style = json.loads(style_path.read_text())
         for lyr in style.get("layers", []):
@@ -58,11 +75,23 @@ def main() -> None:  # pragma: no cover - CLI helper
                 fb = lyr.get("metadata", {}).get("maplibre:s52Fallback")
                 if fb:
                     fallback_objs.add(token.split("-", 1)[0])
+                elif not token.endswith("-stub"):
+                    lt = lyr.get("type", "")
+                    style_by_type.setdefault(lt, set()).add(token.split("-", 1)[0])
             icon = lyr.get("layout", {}).get("icon-image")
             if isinstance(icon, str):
                 symbols_seen.add(icon)
 
     lookup_objs = {l["objl"] for l in lookups}
+    lookup_by_type: Dict[str, Set[str]] = {"symbol": set(), "line": set(), "fill": set()}
+    for lu in lookups:
+        geom = (lu.get("type", "") or "").lower()
+        if geom == "point":
+            lookup_by_type["symbol"].add(lu["objl"])
+        elif geom == "line":
+            lookup_by_type["line"].add(lu["objl"])
+        else:
+            lookup_by_type["fill"].add(lu["objl"])
     style_objs = {t.split("-", 1)[0] for t in tokens}
     covered = sorted(lookup_objs & style_objs)
     missing = sorted(lookup_objs - style_objs)
@@ -90,10 +119,16 @@ def main() -> None:  # pragma: no cover - CLI helper
 
     portrayal_path = coverage_dir / "portrayal_coverage.json"
     portrayed = len(lookup_objs - fallback_objs)
+    by_type: Dict[str, float] = {}
+    for key, geom in [("Point", "symbol"), ("Line", "line"), ("Area", "fill")]:
+        lk = lookup_by_type.get(geom, set())
+        st = style_by_type.get(geom, set()) - fallback_objs
+        by_type[key] = (len(st) / len(lk)) if lk else 0.0
     portrayal = {
         "coverage": (portrayed / len(lookup_objs)) if lookup_objs else 0.0,
         "portrayalMissing": sorted(fallback_objs),
         "sample": sorted(fallback_objs)[:25],
+        "byType": by_type,
     }
     portrayal_path.write_text(json.dumps(portrayal, indent=2, sort_keys=True))
 
@@ -107,6 +142,25 @@ def main() -> None:  # pragma: no cover - CLI helper
         print(f"  delta covered: +{len(newly)}")
         if newly:
             print("  newly covered: " + ", ".join(newly[:20]))
+
+    # S-57 catalogue coverage ---------------------------------------------
+    s57_csv = base / "dist" / "assets" / "s52" / "s57objectclasses.csv"
+    if s57_csv.exists():
+        catalogue = parse_s57_catalogue(s57_csv)
+        catalog_keys = set(catalogue.keys())
+        ignore = {"$AREAS", "$LINES", "$TEXTS"}
+        active = catalog_keys - ignore
+        handled = active & style_objs
+        report = {
+            "totalClasses": len(catalog_keys),
+            "s52Lookups": len(catalog_keys & lookup_objs),
+            "handledByStyles": len(handled),
+            "missingClasses": sorted(active - style_objs),
+            "ignoredClasses": sorted(ignore & catalog_keys),
+        }
+        (coverage_dir / "s57_catalogue.json").write_text(
+            json.dumps(report, indent=2, sort_keys=True)
+        )
 
 
 if __name__ == "__main__":

@@ -7,7 +7,11 @@ END = "<!-- END:S52_COVERAGE -->"
 
 
 def render(
-    coverage_path: Path, portrayal_path: Path, symbols_path: Path, limit: int = 25
+    coverage_path: Path,
+    portrayal_path: Path,
+    symbols_path: Path,
+    s57_path: Path | None = None,
+    limit: int = 25,
 ) -> str:
     coverage = json.loads(coverage_path.read_text())
     portrayal = json.loads(portrayal_path.read_text()) if portrayal_path.exists() else {}
@@ -56,6 +60,27 @@ def render(
             symbols_block,
         ]
     )
+
+    if s57_path and s57_path.exists():
+        s57 = json.loads(s57_path.read_text())
+        missing_s57 = s57.get("missingClasses", [])
+        lines.extend(
+            [
+                "",
+                "### S-57 catalogue",
+                "| metric | value |",
+                "| --- | ---: |",
+                f"| total classes | {s57.get('totalClasses', 0)} |",
+                f"| have S-52 lookup | {s57.get('s52Lookups', 0)} |",
+                f"| handled by styles | {s57.get('handledByStyles', 0)} |",
+                f"| ignored | {len(s57.get('ignoredClasses', []))} |",
+                f"| missing | {len(missing_s57)} |",
+                "",
+                "#### Missing S-57 classes",
+                "\n".join(f"- {m}" for m in missing_s57[:limit]) or "(none)",
+            ]
+        )
+
     return "\n".join(lines)
 
 
@@ -80,8 +105,9 @@ def main() -> None:
     p.add_argument("--coverage", type=Path, required=True)
     p.add_argument("--portrayal", type=Path, required=True)
     p.add_argument("--symbols", type=Path, required=True)
+    p.add_argument("--s57", type=Path)
     args = p.parse_args()
-    block = render(args.coverage, args.portrayal, args.symbols)
+    block = render(args.coverage, args.portrayal, args.symbols, args.s57)
     updated = update_docs(args.docs, block)
     if updated:
         print("Documentation updated")
