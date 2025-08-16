@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 from typing import Optional
 
 from convert_charts import encode_s57_to_mbtiles
 
 # Default ENC dataset directory; override with ENC_DIR env var at runtime.
-ENC_DIR = Path(__file__).resolve().parents[1] / "data" / "enc"
+_DEFAULT_DIR = Path(__file__).resolve().parents[1] / "data" / "enc"
+ENC_DIR = Path(os.environ.get("ENC_DIR", _DEFAULT_DIR))
 
 
 def import_s57(

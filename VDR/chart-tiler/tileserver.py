@@ -27,10 +27,12 @@ try:
 except Exception:  # pragma: no cover
     Reader = None
 
-from fastapi import FastAPI, Response, HTTPException
+from fastapi import FastAPI, Response, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     Counter,
@@ -67,7 +69,19 @@ from s52_xml import parse_day_colors, parse_symbols
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"])
+app.add_middleware(GZipMiddleware, minimum_size=512)
 logger = logging.getLogger("tileserver")
+
+
+@app.exception_handler(HTTPException)
+async def _http_exc_handler(_: Request, exc: HTTPException) -> JSONResponse:
+    return JSONResponse({"error": exc.detail or "error"}, status_code=exc.status_code)
+
+
+@app.exception_handler(Exception)
+async def _exc_handler(_: Request, exc: Exception) -> JSONResponse:  # pragma: no cover - defensive
+    logger.exception("unhandled error: %s", exc)
+    return JSONResponse({"error": "internal server error"}, status_code=500)
 
 _prom_registry = globals().setdefault("_prom_registry", CollectorRegistry())
 _tile_gen_ms = globals().setdefault(
@@ -224,22 +238,27 @@ def _serve_mbtiles(
     cfg: ContourConfig,
 ) -> Response:
     if fmt != "mvt":
-        return Response(status_code=415)
+        return JSONResponse(
+            {"error": "unsupported format", "supported": ["mvt"]}, status_code=415
+        )
+    if z < 0 or x < 0 or y < 0 or x >= 2**z or y >= 2**z:
+        return JSONResponse({"error": "invalid tile"}, status_code=422)
     key = _cache_key(fmt, cfg, z, x, y, ds_id)
     cached = _get_from_redis(key)
     cache_state = "hit" if cached is not None else "miss"
+    etag_src = f"{mb.path}:{z}:{x}:{y}".encode()
+    etag = hashlib.sha1(etag_src).hexdigest()
+    headers = {
+        "X-Tile-Cache": cache_state,
+        "Cache-Control": "public, max-age=60",
+        "ETag": etag,
+    }
     if cached is not None:
-        headers = {"X-Tile-Cache": cache_state, "Cache-Control": "public, max-age=60"}
-        etag_src = f"{mb.path}:{z}:{x}:{y}".encode()
-        headers["ETag"] = hashlib.sha1(etag_src).hexdigest()
         return Response(content=cached, media_type="application/x-protobuf", headers=headers)
     data = mb.get_tile(z, x, y)
     if data is None:
-        return Response(status_code=204)
+        return Response(status_code=204, headers=headers)
     _set_redis(key, data)
-    headers = {"X-Tile-Cache": cache_state, "Cache-Control": "public, max-age=60"}
-    etag_src = f"{mb.path}:{z}:{x}:{y}".encode()
-    headers["ETag"] = hashlib.sha1(etag_src).hexdigest()
     return Response(content=data, media_type="application/x-protobuf", headers=headers)
 
 
@@ -258,7 +277,7 @@ def tiles_png(
     try:
         y_int = int(y)
     except ValueError:
-        return Response(status_code=422)
+        return JSONResponse({"error": "invalid tile"}, status_code=422)
     return tiles(
         z,
         x,
@@ -364,7 +383,7 @@ def tiles_enc_dataset(
 ) -> Response:
     dataset = get_dataset(ds)
     if not dataset:
-        raise HTTPException(status_code=404)
+        return JSONResponse({"error": "dataset not found"}, status_code=404)
     cfg = _cfg_from_params(sc, safety, shallow, deep)
     mb = get_datasource(str(dataset.path))
     start = time.perf_counter()
@@ -407,7 +426,13 @@ def tiles_enc(
             shallow=shallow,
             deep=deep,
         )
-    raise HTTPException(status_code=404)
+    return JSONResponse(
+        {
+            "error": "dataset required",
+            "available": [d.id for d in datasets],
+        },
+        status_code=404,
+    )
 
 
 @app.get("/config/contours")
@@ -434,31 +459,46 @@ def get_datasource_config() -> Dict[str, object]:
 @app.get("/style/s52.day.json")
 def style() -> Response:
     path = STYLING_DIST / "style.s52.day.json"
-    return Response(path.read_bytes(), media_type="application/json")
+    data = path.read_bytes()
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {"ETag": etag, "Cache-Control": "public, max-age=3600"}
+    return Response(data, media_type="application/json", headers=headers)
 
 
 @app.get("/style/s52.dusk.json")
 def style_dusk() -> Response:
     path = STYLING_DIST / "style.s52.dusk.json"
-    return Response(path.read_bytes(), media_type="application/json")
+    data = path.read_bytes()
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {"ETag": etag, "Cache-Control": "public, max-age=3600"}
+    return Response(data, media_type="application/json", headers=headers)
 
 
 @app.get("/style/s52.night.json")
 def style_night() -> Response:
     path = STYLING_DIST / "style.s52.night.json"
-    return Response(path.read_bytes(), media_type="application/json")
+    data = path.read_bytes()
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {"ETag": etag, "Cache-Control": "public, max-age=3600"}
+    return Response(data, media_type="application/json", headers=headers)
 
 
 @app.get("/sprites/s52-day.json")
 def sprite_json() -> Response:
     path = STYLING_DIST / "sprites" / "s52-day.json"
-    return Response(path.read_bytes(), media_type="application/json")
+    data = path.read_bytes()
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {"ETag": etag, "Cache-Control": "public, max-age=3600"}
+    return Response(data, media_type="application/json", headers=headers)
 
 
 @app.get("/sprites/s52-day.png")
 def sprite_png() -> Response:
     path = STYLING_DIST / "assets" / "s52" / "rastersymbols-day.png"
-    return Response(path.read_bytes(), media_type="image/png")
+    data = path.read_bytes()
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {"ETag": etag, "Cache-Control": "public, max-age=3600"}
+    return Response(data, media_type="image/png", headers=headers)
 
 
 @app.get("/metrics")
@@ -514,7 +554,7 @@ def charts_summary() -> Dict[str, Any]:
 def chart_detail(cid: str) -> Dict[str, Any]:
     rec = reg.get(cid)
     if not rec:
-        raise HTTPException(status_code=404)
+        raise HTTPException(status_code=404, detail="chart not found")
     return _serialize(rec)
 
 
@@ -522,11 +562,11 @@ def chart_detail(cid: str) -> Dict[str, Any]:
 def chart_thumbnail(cid: str):  # pragma: no cover - simple placeholder
     rec = reg.get(cid)
     if not rec:
-        raise HTTPException(status_code=404)
+        raise HTTPException(status_code=404, detail="chart not found")
     thumb = Path(str(rec.path) + ".png") if rec.path else None
     if thumb and thumb.exists():
         return Response(thumb.read_bytes(), media_type="image/png")
-    raise HTTPException(status_code=404)
+    raise HTTPException(status_code=404, detail="thumbnail not found")
 
 
 @app.post("/charts/scan")
@@ -613,7 +653,7 @@ def _render_geotiff(cid: str, z: int, x: int, y: int, fmt: str) -> bytes:
 def titiler_tiles(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Response:
     fmt = fmt.lower()
     if fmt == "webp" and os.environ.get("GEO_WEBP") != "1":
-        raise HTTPException(status_code=415)
+        raise HTTPException(status_code=415, detail="unsupported format")
     data = _render_geotiff(cid, z, x, y, fmt)
     media = "image/webp" if fmt == "webp" else "image/png"
     return Response(data, media_type=media, headers={"Cache-Control": "public, max-age=60"})
@@ -623,7 +663,7 @@ def titiler_tiles(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Respons
 def tiles_geotiff(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Response:
     fmt = fmt.lower()
     if fmt == "webp" and os.environ.get("GEO_WEBP") != "1":
-        raise HTTPException(status_code=415)
+        raise HTTPException(status_code=415, detail="unsupported format")
     media = "image/webp" if fmt == "webp" else "image/png"
     key = f"{cid}:{z}/{x}/{y}.{fmt}"
     cached = _geo_cache.get(key)
@@ -638,7 +678,7 @@ def tiles_geotiff(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Respons
         cached = _geo_cache.get(key)
         if cached is not None:
             return Response(cached, media_type=media, headers={"X-Tile-Cache": "stale", "Cache-Control": "public, max-age=60"})
-        raise HTTPException(status_code=502)
+        raise HTTPException(status_code=502, detail="render error")
     _geo_cache[key] = data
     _geo_cache.move_to_end(key)
     if len(_geo_cache) > _GEO_CACHE_SIZE:

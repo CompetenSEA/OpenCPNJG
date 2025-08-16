@@ -20,11 +20,16 @@ export function createMapAPI(map: any) {
       datasetId = id;
       const style = map.getStyle ? map.getStyle() : { sources: { enc: { tiles: [] } } };
       const { safety, shallow, deep } = params;
+      const qs = new URLSearchParams({
+        fmt: 'mvt',
+        safety: String(safety),
+        shallow: String(shallow),
+        deep: String(deep),
+      }).toString();
       style.sources.enc = {
         type: 'vector',
-        tiles: [`/tiles/enc/${id}/{z}/{x}/{y}?fmt=mvt&safety=${safety}&shallow=${shallow}&deep=${deep}`],
+        tiles: [`/tiles/enc/${id}/{z}/{x}/{y}?${qs}`],
       };
-      style.sources.base = style.sources.enc;
       map.setStyle(style);
       if (bounds && map.fitBounds) {
         map.fitBounds([
