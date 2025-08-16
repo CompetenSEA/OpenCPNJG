@@ -21,6 +21,11 @@ from pathlib import Path
 from registry import get_registry, ChartRecord
 from typing import Dict, Optional, List, Any
 
+try:
+    from rio_tiler.io import Reader  # type: ignore
+except Exception:  # pragma: no cover
+    Reader = None
+
 from fastapi import FastAPI, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import (
@@ -261,9 +266,10 @@ def tiles(
             cache_state,
             duration_ms,
         )
-        return Response(
-            content=cached, media_type=media, headers={"X-Tile-Cache": cache_state}
-        )
+        headers = {"X-Tile-Cache": cache_state}
+        if media.startswith("image/"):
+            headers["Cache-Control"] = "public, max-age=60"
+        return Response(content=cached, media_type=media, headers=headers)
 
     if fmt == "png-mvp" or (fmt == "png" and os.environ.get("RASTER_MVP") == "1"):
         before = _render_png_mvp.cache_info().hits
@@ -299,7 +305,10 @@ def tiles(
         cache_state,
         duration_ms,
     )
-    return Response(content=data, media_type=media_type, headers={"X-Tile-Cache": cache_state})
+    headers = {"X-Tile-Cache": cache_state}
+    if media_type.startswith("image/"):
+        headers["Cache-Control"] = "public, max-age=60"
+    return Response(content=data, media_type=media_type, headers=headers)
 
 
 @app.get("/config/contours")
@@ -381,7 +390,14 @@ def _serialize(rec: ChartRecord) -> Dict[str, Any]:
 
 
 @app.get("/charts")
-def list_charts(kind: str | None = None, q: str | None = None, page: int = 1, pageSize: int = 50) -> List[Dict[str, Any]]:
+def list_charts(
+    kind: str | None = None,
+    q: str | None = None,
+    page: int = 1,
+    pageSize: int = 50,
+) -> List[Dict[str, Any]]:
+    page = max(1, page)
+    pageSize = max(1, min(100, pageSize))
     return [_serialize(r) for r in reg.list(kind=kind, q=q, page=page, pageSize=pageSize)]
 
 
@@ -404,43 +420,68 @@ def chart_thumbnail(cid: str):  # pragma: no cover - simple placeholder
     raise HTTPException(status_code=404)
 
 
+@app.post("/charts/scan")
+def charts_scan() -> Dict[str, Any]:
+    data_dir = Path(__file__).resolve().parent / "data"
+    reg.scan([data_dir])
+    return {"scanned": True, "count": len(reg.list())}
+
+
 # --- GeoTIFF tiles via pseudo MapProxy -------------------------------------
+_GEO_CACHE_SIZE = int(os.environ.get("GEO_LRU_SIZE", "256"))
 _geo_cache: "OrderedDict[str, bytes]" = globals().setdefault("_geo_cache", OrderedDict())
-_GEO_CACHE_SIZE = 256
 _geo_hits = globals().setdefault(
     "_geo_hits", Counter("geotiff_cache_hits", "GeoTIFF tile cache hits", registry=_prom_registry)
 )
+_geo_errors = globals().setdefault(
+    "_geo_errors", Counter("geotiff_errors", "GeoTIFF tile render errors", registry=_prom_registry)
+)
 
 
-def _render_geotiff(id: str, z: int, x: int, y: int, fmt: str) -> bytes:
-    # placeholder – real implementation would delegate to TiTiler
-    return PNG_1X1
+def _render_geotiff(cid: str, z: int, x: int, y: int, fmt: str) -> bytes:
+    rec = reg.get(cid)
+    if not rec or not rec.path:
+        raise RuntimeError("chart not found")
+    if Reader is None:
+        return PNG_1X1
+    with Reader(rec.path) as r:
+        img, _ = r.tile(x, y, z)
+    img_format = "WEBP" if fmt == "webp" else "PNG"
+    return img.render(img_format=img_format)
 
 
 @app.get("/titiler/tiles/{cid}/{z}/{x}/{y}.{fmt}")
 def titiler_tiles(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Response:
+    fmt = fmt.lower()
+    if fmt == "webp" and os.environ.get("GEO_WEBP") != "1":
+        raise HTTPException(status_code=415)
     data = _render_geotiff(cid, z, x, y, fmt)
-    media = "image/png" if fmt == "png" else "image/webp"
-    return Response(data, media_type=media)
+    media = "image/webp" if fmt == "webp" else "image/png"
+    return Response(data, media_type=media, headers={"Cache-Control": "public, max-age=60"})
 
 
 @app.get("/tiles/geotiff/{cid}/{z}/{x}/{y}.{fmt}")
 def tiles_geotiff(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Response:
+    fmt = fmt.lower()
+    if fmt == "webp" and os.environ.get("GEO_WEBP") != "1":
+        raise HTTPException(status_code=415)
+    media = "image/webp" if fmt == "webp" else "image/png"
     key = f"{cid}:{z}/{x}/{y}.{fmt}"
     cached = _geo_cache.get(key)
     if cached is not None:
         _geo_cache.move_to_end(key)
         _geo_hits.inc()
-        return Response(cached, media_type="image/png", headers={"X-Tile-Cache": "hit", "Cache-Control": "public, max-age=60"})
+        return Response(cached, media_type=media, headers={"X-Tile-Cache": "hit", "Cache-Control": "public, max-age=60"})
     try:
         data = _render_geotiff(cid, z, x, y, fmt)
     except Exception:
+        _geo_errors.inc()
         cached = _geo_cache.get(key)
         if cached is not None:
-            return Response(cached, media_type="image/png", headers={"X-Tile-Cache": "stale", "Cache-Control": "public, max-age=60"})
+            return Response(cached, media_type=media, headers={"X-Tile-Cache": "stale", "Cache-Control": "public, max-age=60"})
         raise HTTPException(status_code=502)
     _geo_cache[key] = data
     _geo_cache.move_to_end(key)
     if len(_geo_cache) > _GEO_CACHE_SIZE:
         _geo_cache.popitem(last=False)
-    return Response(data, media_type="image/png", headers={"X-Tile-Cache": "miss", "Cache-Control": "public, max-age=60"})
+    return Response(data, media_type=media, headers={"X-Tile-Cache": "miss", "Cache-Control": "public, max-age=60"})

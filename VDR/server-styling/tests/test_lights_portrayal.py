@@ -62,6 +62,11 @@ def test_light_label_and_sector(tmp_path: Path) -> None:
     style = json.loads(style_path.read_text())
     lights = next(lyr for lyr in style["layers"] if lyr["id"] == "LIGHTS")
     text_field = lights.get("layout", {}).get("text-field")
-    assert "LITCHR" in json.dumps(text_field)
+    text_json = json.dumps(text_field)
+    assert "LITCHR" in text_json
+    assert "OBJNAM" in text_json
+    assert "SECTR1" in text_json
+    size_expr = json.dumps(lights.get("layout", {}).get("text-size"))
+    assert "zoom" in size_expr
     sector = next(lyr for lyr in style["layers"] if lyr["id"] == "LIGHTS-sector")
     assert sector.get("metadata", {}).get("maplibre:s52") == "LIGHTS-LS(sector)"

@@ -215,7 +215,7 @@ def build_layers(
                 "filter": [
                     "all",
                     ["==", ["get", "OBJL"], "DEPCNT"],
-                    [">=", ["to-number", ["get", "QUAPOS"]], 2],
+                    ["==", ["get", "isLowAcc"], True],
                 ],
                 "paint": {
                     "line-color": get_colour(colors, "DEPCN"),
@@ -652,35 +652,51 @@ def _norm_dash(pattern: str | None) -> List[float] | None:
 def _light_label_expr() -> List[object]:
     """Compose a basic light label expression from common attributes."""
     return [
-        "concat",
-        ["coalesce", ["get", "LITCHR"], ""],
+        "coalesce",
+        ["get", "OBJNAM"],
         [
-            "case",
-            ["any", ["has", "COLOUR"], ["has", "COLOUR2"], ["has", "COLPAT"]],
+            "concat",
+            ["coalesce", ["get", "LITCHR"], ""],
             [
-                "concat",
-                " ",
+                "case",
+                ["any", ["has", "COLOUR"], ["has", "COLOUR2"], ["has", "COLPAT"]],
                 [
-                    "coalesce",
-                    ["get", "COLOUR"],
-                    ["get", "COLOUR2"],
-                    ["get", "COLPAT"],
-                    "",
+                    "concat",
+                    " ",
+                    [
+                        "coalesce",
+                        ["get", "COLOUR"],
+                        ["get", "COLOUR2"],
+                        ["get", "COLPAT"],
+                        "",
+                    ],
                 ],
+                "",
             ],
-            "",
-        ],
-        [
-            "case",
-            ["has", "HEIGHT"],
-            ["concat", " ", ["to-string", ["get", "HEIGHT"]], "m"],
-            "",
-        ],
-        [
-            "case",
-            ["has", "RANGE"],
-            ["concat", " ", ["to-string", ["get", "RANGE"]], "M"],
-            "",
+            [
+                "case",
+                ["has", "HEIGHT"],
+                ["concat", " ", ["to-string", ["get", "HEIGHT"]], "m"],
+                "",
+            ],
+            [
+                "case",
+                ["has", "RANGE"],
+                ["concat", " ", ["to-string", ["get", "RANGE"]], "M"],
+                "",
+            ],
+            [
+                "case",
+                ["all", ["has", "SECTR1"], ["has", "SECTR2"]],
+                [
+                    "concat",
+                    " ",
+                    ["to-string", ["get", "SECTR1"]],
+                    "-",
+                    ["to-string", ["get", "SECTR2"]],
+                ],
+                "",
+            ],
         ],
     ]
 
@@ -742,6 +758,15 @@ def generate_layers_from_lookups(
                 layer.setdefault("layout", {})
                 layer["layout"]["text-field"] = _light_label_expr()
                 layer["layout"]["text-font"] = ["Noto Sans Regular"]
+                layer["layout"]["text-size"] = [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    10,
+                    10,
+                    17,
+                    14,
+                ]
                 layer.setdefault("paint", {})
                 layer["paint"]["text-color"] = get_colour(colors, "CHBLK")
                 layer["paint"]["text-halo-color"] = "#ffffff"

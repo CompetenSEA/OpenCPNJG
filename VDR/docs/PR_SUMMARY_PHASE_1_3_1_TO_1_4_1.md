@@ -30,4 +30,8 @@ and refreshing the registry.
 - `pytest VDR/chart-tiler/tests/test_registry_scan.py`
 - `pytest VDR/chart-tiler/tests/test_tiles_geotiff.py`
 - `pytest VDR/chart-tiler/tests/test_charts_api.py`
+- `pytest VDR/chart-tiler/tests/test_tileserver_health.py`
+- `pytest VDR/chart-tiler/tests/test_tiles_geotiff_real.py || true`
+- `pytest VDR/server-styling/tests/test_depths_and_hazards.py`
+- `pytest VDR/server-styling/tests/test_lights_portrayal.py`
 - `npm test --prefix VDR/web-client`
