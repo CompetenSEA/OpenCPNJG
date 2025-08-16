@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--glyphs", required=True)
     p.add_argument("--safety-contour", type=float, default=0.0)
     p.add_argument("--emit-name")
+    p.add_argument("--auto-cover", action="store_true")
     return p.parse_args()
 
 
@@ -53,6 +54,7 @@ def main() -> int:  # pragma: no cover - CLI helper
             "--sprite-prefix",
             args.sprite_prefix,
             *( ["--emit-name", emit_name] if emit_name else [] ),
+            *( ["--auto-cover"] if args.auto_cover else [] ),
             "--palette",
             pal,
             "--output",

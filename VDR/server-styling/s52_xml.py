@@ -161,7 +161,16 @@ def parse_lookups(root: Element) -> List[Dict[str, Any]]:
         table = lu.findtext("table-name", default="")
         disp = lu.findtext("disp-prio", default="")
         instr = lu.findtext("instruction", default="")
-        lookups.append({"objl": objl, "table": table, "disp_prio": disp, "instruction": instr})
+        ltype = lu.findtext("type", default="")
+        lookups.append(
+            {
+                "objl": objl,
+                "table": table,
+                "disp_prio": disp,
+                "instruction": instr,
+                "type": ltype,
+            }
+        )
     return lookups
 
 
