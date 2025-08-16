@@ -1,4 +1,5 @@
 import maplibregl from 'maplibre-gl';
+import { useEffect, useRef } from 'react';
 
 export interface MarinerParams {
   safety: number;
@@ -24,8 +25,54 @@ export function createMapAPI(map: any) {
     setTheme(theme: 'day' | 'dusk' | 'night') {
       map.setStyle(`/style/s52.${theme}.json`);
     },
+    setBase(base: 'osm' | 'geotiff' | 'enc', chartId?: string) {
+      const style = map.getStyle ? map.getStyle() : { sources: {} };
+      if (base === 'osm') {
+        style.sources.base = {
+          type: 'raster',
+          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+          tileSize: 256,
+        };
+      } else if (base === 'geotiff' && chartId) {
+        style.sources.base = {
+          type: 'raster',
+          tiles: [`/tiles/geotiff/${chartId}/{z}/{x}/{y}.png`],
+          tileSize: 256,
+        };
+      } else if (base === 'enc') {
+        style.sources.base = {
+          type: 'vector',
+          tiles: ['/tiles/cm93/{z}/{x}/{y}?fmt=mvt'],
+        };
+      }
+      map.setStyle(style);
+    },
   };
 }
 
-export const AppMap = () => null; // Placeholder minimal component for tests
+interface AppMapProps {
+  base: 'osm' | 'geotiff' | 'enc';
+  chartId?: string;
+}
 
+export const AppMap = ({ base, chartId }: AppMapProps) => {
+  const mapRef = useRef<any>();
+  useEffect(() => {
+    const map = {
+      style: { sources: {} as any },
+      setStyle(s: any) { this.style = s; },
+      getStyle() { return this.style; },
+      setLayoutProperty() {},
+      addSource() {},
+      addLayer() {},
+    };
+    mapRef.current = map;
+    createMapAPI(map).setBase(base, chartId);
+  }, []);
+  useEffect(() => {
+    if (mapRef.current) {
+      createMapAPI(mapRef.current).setBase(base, chartId);
+    }
+  }, [base, chartId]);
+  return null;
+};

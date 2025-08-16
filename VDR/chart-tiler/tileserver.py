@@ -17,9 +17,10 @@ import time
 import xml.etree.ElementTree as ET
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Optional
+from registry import get_registry, ChartRecord
+from typing import Dict, Optional, List, Any
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, Response, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -94,9 +95,14 @@ def _tile_bbox(z: int, x: int, y: int) -> tuple[float, float, float, float]:
 
 
 _chartsymbols_path = STYLING_DIST / "assets" / "s52" / "chartsymbols.xml"
-_root = ET.parse(_chartsymbols_path).getroot()
-_day_colors = parse_day_colors(_root)
-_symbols = parse_symbols(_root)
+try:
+    _root = ET.parse(_chartsymbols_path).getroot()
+    _day_colors = parse_day_colors(_root)
+    _symbols = parse_symbols(_root)
+except FileNotFoundError:
+    _root = ET.Element("root")
+    _day_colors = {}
+    _symbols = {}
 DEFAULT_CONFIG = ContourConfig()
 
 
@@ -339,3 +345,84 @@ def sprite_png() -> Response:
 @app.get("/metrics")
 def metrics() -> Response:
     return Response(generate_latest(_prom_registry), media_type=CONTENT_TYPE_LATEST)
+
+# ---------------------------------------------------------------------------
+# Chart registry API and GeoTIFF tile service
+reg = get_registry()
+
+@app.on_event("startup")
+def _scan_registry() -> None:
+    data_dir = Path(__file__).resolve().parent / "data"
+    reg.scan([data_dir])
+
+
+def _serialize(rec: ChartRecord) -> Dict[str, Any]:
+    return {
+        "id": rec.id,
+        "kind": rec.kind,
+        "name": rec.name,
+        "bbox": rec.bbox,
+        "minzoom": rec.minzoom,
+        "maxzoom": rec.maxzoom,
+        "updatedAt": rec.updatedAt,
+        "path": rec.path,
+        "url": rec.url,
+        "tags": rec.tags or [],
+    }
+
+
+@app.get("/charts")
+def list_charts(kind: str | None = None, q: str | None = None, page: int = 1, pageSize: int = 50) -> List[Dict[str, Any]]:
+    return [_serialize(r) for r in reg.list(kind=kind, q=q, page=page, pageSize=pageSize)]
+
+
+@app.get("/charts/{cid}")
+def chart_detail(cid: str) -> Dict[str, Any]:
+    rec = reg.get(cid)
+    if not rec:
+        raise HTTPException(status_code=404)
+    return _serialize(rec)
+
+
+@app.get("/charts/{cid}/thumbnail")
+def chart_thumbnail(cid: str):  # pragma: no cover - simple placeholder
+    rec = reg.get(cid)
+    if not rec:
+        raise HTTPException(status_code=404)
+    thumb = Path(str(rec.path) + ".png") if rec.path else None
+    if thumb and thumb.exists():
+        return Response(thumb.read_bytes(), media_type="image/png")
+    raise HTTPException(status_code=404)
+
+
+# --- GeoTIFF tiles via pseudo MapProxy -------------------------------------
+_geo_cache: Dict[str, bytes] = {}
+_geo_hits = Counter("geotiff_cache_hits", "GeoTIFF tile cache hits", registry=_prom_registry)
+
+
+def _render_geotiff(id: str, z: int, x: int, y: int, fmt: str) -> bytes:
+    # placeholder – real implementation would delegate to TiTiler
+    return PNG_1X1
+
+
+@app.get("/titiler/tiles/{cid}/{z}/{x}/{y}.{fmt}")
+def titiler_tiles(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Response:
+    data = _render_geotiff(cid, z, x, y, fmt)
+    media = "image/png" if fmt == "png" else "image/webp"
+    return Response(data, media_type=media)
+
+
+@app.get("/tiles/geotiff/{cid}/{z}/{x}/{y}.{fmt}")
+def tiles_geotiff(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Response:
+    key = f"{cid}:{z}/{x}/{y}.{fmt}"
+    if key in _geo_cache:
+        _geo_hits.inc()
+        return Response(_geo_cache[key], media_type="image/png", headers={"X-Tile-Cache": "hit"})
+    try:
+        data = _render_geotiff(cid, z, x, y, fmt)
+    except Exception:
+        if key in _geo_cache:
+            return Response(_geo_cache[key], media_type="image/png", headers={"X-Tile-Cache": "stale"})
+        raise HTTPException(status_code=502)
+    _geo_cache[key] = data
+    return Response(data, media_type="image/png", headers={"X-Tile-Cache": "miss"})
