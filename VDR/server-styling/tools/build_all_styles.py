@@ -24,6 +24,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--safety-contour", type=float, default=0.0)
     p.add_argument("--emit-name")
     p.add_argument("--auto-cover", action="store_true")
+    p.add_argument("--s57-catalogue", type=Path)
+    p.add_argument("--labels", action="store_true")
     return p.parse_args()
 
 
@@ -55,6 +57,8 @@ def main() -> int:  # pragma: no cover - CLI helper
             args.sprite_prefix,
             *( ["--emit-name", emit_name] if emit_name else [] ),
             *( ["--auto-cover"] if args.auto_cover else [] ),
+            *( ["--s57-catalogue", str(args.s57_catalogue)] if args.s57_catalogue else [] ),
+            *( ["--labels"] if args.labels else [] ),
             "--palette",
             pal,
             "--output",

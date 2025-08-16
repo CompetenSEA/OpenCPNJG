@@ -42,17 +42,23 @@ jobs:
             --glyphs "/glyphs/{fontstack}/{range}.pbf" \
             --safety-contour 10 \
             --auto-cover \
+            --s57-catalogue VDR/server-styling/dist/assets/s52/s57objectclasses.csv \
             --emit-name "OpenCPN S-52 {palette}"
       - name: Coverage summary
         run: |
           python VDR/server-styling/s52_coverage.py \
             --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml
-      - name: Enforce presence coverage
+      - name: Enforce coverage thresholds
         run: |
           python - <<'PY'
 import json,sys
-d=json.load(open('VDR/server-styling/dist/coverage/style_coverage.json'))
-sys.exit(0 if d.get('coveredByStyle')==d.get('totalLookups') else 1)
+s=json.load(open('VDR/server-styling/dist/coverage/style_coverage.json'))
+c=json.load(open('VDR/server-styling/dist/coverage/s57_catalogue.json'))
+presence_ok = s.get('coveredByStyle') == s.get('totalLookups')
+ignored = set(c.get('ignoredClasses', []))
+total = c.get('totalClasses',0) - len(ignored)
+handled = c.get('handledByStyles',0)
+sys.exit(0 if presence_ok and (handled/total if total else 0)>=0.99 else 1)
 PY
       - name: Docs freshness
         run: |
@@ -60,7 +66,8 @@ PY
             --docs VDR/docs/s52s57cm93.md \
             --coverage VDR/server-styling/dist/coverage/style_coverage.json \
             --portrayal VDR/server-styling/dist/coverage/portrayal_coverage.json \
-            --symbols VDR/server-styling/dist/coverage/symbols_seen.txt || true
+            --symbols VDR/server-styling/dist/coverage/symbols_seen.txt \
+            --s57 VDR/server-styling/dist/coverage/s57_catalogue.json || true
           git diff --quiet || {
             echo "Docs changed. Please commit VDR/docs/s52s57cm93.md"; exit 2; }
       - name: Upload artifacts

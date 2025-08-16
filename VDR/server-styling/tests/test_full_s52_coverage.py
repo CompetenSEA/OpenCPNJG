@@ -97,6 +97,20 @@ def test_auto_cover(tmp_path: Path) -> None:
         pytest.skip("node not installed")
 
 
+def test_tokens_format_real_style() -> None:
+    style_path = ROOT / "server-styling" / "dist" / "style.s52.day.json"
+    if not style_path.exists():
+        pytest.skip("style not built")
+    style = json.loads(style_path.read_text())
+    for lyr in style.get("layers", []):
+        token = lyr.get("metadata", {}).get("maplibre:s52")
+        assert token
+        assert any(
+            pat in token
+            for pat in ["-SY(", "-LS(", "-AC(", "-AP(", "-stub"]
+        )
+
+
 def test_presence_coverage_real_assets() -> None:
     cov_path = ROOT / "server-styling" / "dist" / "coverage" / "style_coverage.json"
     if not cov_path.exists():

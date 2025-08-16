@@ -8,12 +8,13 @@ required for the vector‑first prototype.  Colours and ordering are derived fro
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Set
 
 from s52_xml import (
     parse_palette_colors,
@@ -40,6 +41,93 @@ def get_colour(colours: Dict[str, str], token: str, fallback: str | None = None)
     if fallback and fallback in colours:
         return colours[fallback]
     return "#ff00ff"  # magenta for missing tokens
+
+
+def parse_s57_catalogue(path: Path) -> Dict[str, Set[str]]:
+    """Parse s57objectclasses.csv returning primitives per OBJL."""
+    catalogue: Dict[str, Set[str]] = {}
+    if not path or not path.exists():
+        return catalogue
+    with path.open(newline="") as fh:
+        reader = csv.DictReader(fh)
+        for row in reader:
+            objl = row.get("Acronym") or row.get("acronym")
+            if not objl:
+                continue
+            prims = row.get("Primitives") or row.get("primitives") or "P"
+            prim_set: Set[str] = set()
+            for prim in prims.split(";"):
+                p = prim.strip().upper()
+                if p.startswith("P"):
+                    prim_set.add("P")
+                elif p.startswith("L"):
+                    prim_set.add("L")
+                elif p.startswith("A"):
+                    prim_set.add("A")
+            if not prim_set:
+                prim_set.add("P")
+            catalogue[objl] = prim_set
+    return catalogue
+
+
+def generate_stub_layers_from_catalog(
+    colors: Dict[str, str],
+    catalogue: Dict[str, Set[str]],
+    existing_objls: Set[str],
+    source: str,
+    source_layer: str,
+    priorities: Dict[str, int],
+) -> List[tuple[int, Dict[str, object]]]:
+    layers: List[tuple[int, Dict[str, object]]] = []
+    for objl, prims in catalogue.items():
+        if objl in existing_objls:
+            continue
+        prio = priorities.get(objl, 50)
+        for prim in prims:
+            lyr_id = f"{objl}-{prim}"
+            metadata = {"maplibre:s52": f"{objl}-stub"}
+            if prim == "P":
+                layer = {
+                    "id": lyr_id,
+                    "type": "symbol",
+                    "source": source,
+                    "source-layer": source_layer,
+                    "filter": ["==", ["get", "OBJL"], objl],
+                    "layout": {
+                        "icon-image": "marker-15",
+                        "icon-allow-overlap": True,
+                    },
+                    "metadata": metadata,
+                }
+            elif prim == "L":
+                layer = {
+                    "id": lyr_id,
+                    "type": "line",
+                    "source": source,
+                    "source-layer": source_layer,
+                    "filter": ["==", ["get", "OBJL"], objl],
+                    "paint": {
+                        "line-color": get_colour(colors, "CHBLK"),
+                        "line-width": 1,
+                    },
+                    "metadata": metadata,
+                }
+            else:  # Area
+                layer = {
+                    "id": lyr_id,
+                    "type": "fill",
+                    "source": source,
+                    "source-layer": source_layer,
+                    "filter": ["==", ["get", "OBJL"], objl],
+                    "paint": {
+                        "fill-color": get_colour(colors, "LANDA"),
+                        "fill-outline-color": get_colour(colors, "CHBLK"),
+                    },
+                    "metadata": metadata,
+                }
+            layers.append((prio, layer))
+    layers.sort(key=lambda tup: tup[0])
+    return layers
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +168,7 @@ def build_layers(
                     "fill-color": get_colour(colors, "LANDA"),
                     "fill-outline-color": get_colour(colors, "CHBLK"),
                 },
-                "metadata": {"maplibre:s52": "LNDARE-LANDA"},
+                "metadata": {"maplibre:s52": "LNDARE-AC(LANDA)"},
             },
         )
     )
@@ -100,7 +188,7 @@ def build_layers(
                     ["<", ["coalesce", ["get", "DRVAL2"], ["get", "DRVAL1"], 99999], sc],
                 ],
                 "paint": {"fill-color": get_colour(colors, "DEPVS", "DEPIT1")},
-                "metadata": {"maplibre:s52": "DEPARE-DEPVS"},
+                "metadata": {"maplibre:s52": "DEPARE-AC(DEPVS)"},
             },
         )
     )
@@ -122,7 +210,7 @@ def build_layers(
                     ],
                 ],
                 "paint": {"fill-color": get_colour(colors, "DEPDW")},
-                "metadata": {"maplibre:s52": "DEPARE-DEPDW"},
+                "metadata": {"maplibre:s52": "DEPARE-AC(DEPDW)"},
             },
         )
     )
@@ -138,7 +226,7 @@ def build_layers(
                 "source-layer": source_layer,
                 "filter": ["==", ["get", "OBJL"], "DEPCNT"],
                 "paint": {"line-color": get_colour(colors, "DEPCN"), "line-width": 1},
-                "metadata": {"maplibre:s52": "DEPCNT-DEPCN"},
+                "metadata": {"maplibre:s52": "DEPCNT-LS(DEPCN)"},
             },
         )
     )
@@ -160,7 +248,7 @@ def build_layers(
                     "line-width": 1,
                     "line-dasharray": [2, 2],
                 },
-                "metadata": {"maplibre:s52": "DEPCNT-QUAPOS>=2"},
+                "metadata": {"maplibre:s52": "DEPCNT-LS(DEPCN)"},
             },
         )
     )
@@ -181,7 +269,7 @@ def build_layers(
                     "line-color": get_colour(colors, "DEPSC"),
                     "line-width": 2,
                 },
-                "metadata": {"maplibre:s52": "DEPCNT-VALDCO==sc"},
+                "metadata": {"maplibre:s52": "DEPCNT-LS(DEPSC)"},
             },
         )
     )
@@ -200,7 +288,7 @@ def build_layers(
                     "line-color": get_colour(colors, "CHBLK"),
                     "line-width": 1,
                 },
-                "metadata": {"maplibre:s52": "COALNE-CHBLK"},
+                "metadata": {"maplibre:s52": "COALNE-LS(CHBLK)"},
             },
         )
     )
@@ -250,7 +338,7 @@ def build_layers(
                     "source-layer": source_layer,
                     "filter": ["==", ["get", "OBJL"], obj],
                     "layout": layout,
-                    "metadata": {"maplibre:s52": f"{obj}-{sym_name}"},
+                    "metadata": {"maplibre:s52": f"{obj}-SY({sym_name})"},
                 },
             )
         )
@@ -287,7 +375,7 @@ def build_layers(
                     "source-layer": source_layer,
                     "filter": ["==", ["get", "OBJL"], obj],
                     "paint": paint,
-                    "metadata": {"maplibre:s52": f"{obj}-{ls_meta.get('color-token', '')}"},
+                    "metadata": {"maplibre:s52": f"{obj}-LS({ls_meta.get('color-token', '')})"},
                 },
             )
         )
@@ -302,8 +390,11 @@ def build_layers(
                 "source": source,
                 "source-layer": source_layer,
                 "filter": ["==", ["get", "OBJL"], "SEAARE"],
-                "paint": {"fill-color": get_colour(colors, "DEPDW")},
-                "metadata": {"maplibre:s52": "SEAARE-DEPDW"},
+                "paint": {
+                    "fill-color": get_colour(colors, "DEPDW"),
+                    "fill-outline-color": get_colour(colors, "CHBLK"),
+                },
+                "metadata": {"maplibre:s52": "SEAARE-AC(DEPDW)"},
             },
         )
     )
@@ -321,7 +412,7 @@ def build_layers(
                         "line-color": get_colour(colors, "CHBLK"),
                         "line-width": 1,
                     },
-                    "metadata": {"maplibre:s52": f"{obj}-CHBLK"},
+                    "metadata": {"maplibre:s52": f"{obj}-LS(CHBLK)"},
                 },
             )
         )
@@ -364,7 +455,7 @@ def build_layers(
                     ],
                     "icon-size": 1.0,
                 },
-                "metadata": {"maplibre:s52": "UDWHAZ-hazardIcon"},
+                "metadata": {"maplibre:s52": "UDWHAZ-SY(hazardIcon)"},
             },
         )
     )
@@ -401,7 +492,7 @@ def build_layers(
                     "text-halo-color": get_colour(colors, "SNDG2", "#FFFFFF"),
                     "text-halo-width": 1,
                 },
-                "metadata": {"maplibre:s52": "SOUNDG"},
+                "metadata": {"maplibre:s52": "SOUNDG-SY(text)"},
             },
         )
     )
@@ -429,6 +520,7 @@ def generate_layers_from_lookups(
     source: str,
     source_layer: str,
     priorities: Dict[str, int],
+    labels: bool = False,
 ) -> List[tuple[int, Dict[str, object]]]:
     """Synthesise minimal layers for all lookups."""
 
@@ -472,6 +564,18 @@ def generate_layers_from_lookups(
                 "layout": layout,
                 "metadata": metadata,
             }
+            if labels and objl == "LIGHTS":
+                layer.setdefault("layout", {})
+                layer["layout"]["text-field"] = [
+                    "coalesce",
+                    ["get", "LITNAM"],
+                    "",
+                ]
+                layer["layout"]["text-font"] = ["Noto Sans Regular"]
+                layer.setdefault("paint", {})
+                layer["paint"]["text-color"] = get_colour(colors, "CHBLK")
+                layer["paint"]["text-halo-color"] = "#ffffff"
+                layer["paint"]["text-halo-width"] = 1
         elif geom == "line":
             ls_match = re.search(r"LS\(([^,]+),([^,]+),([^\)]+)\)", instr)
             color_token = None
@@ -526,6 +630,7 @@ def generate_layers_from_lookups(
                     fallback = "missingColor"
                 paint["fill-color"] = get_colour(colors, "LANDA")
                 metadata["maplibre:s52"] = f"{objl}-stub"
+            paint["fill-outline-color"] = get_colour(colors, "CHBLK")
             layer = {
                 "id": objl,
                 "type": "fill",
@@ -561,6 +666,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sprite-prefix", default="", help="Prefix for sprite names")
     p.add_argument("--emit-name", help="Override style.name in output")
     p.add_argument("--auto-cover", action="store_true", help="Generate layers for all lookups")
+    p.add_argument("--s57-catalogue", type=Path)
+    p.add_argument("--labels", action="store_true", help="Render labels for certain features")
     p.add_argument(
         "--palette",
         choices=["day", "dusk", "night"],
@@ -613,12 +720,34 @@ def main() -> None:  # pragma: no cover - CLI wrapper
             args.source_name,
             args.source_layer,
             priorities,
+            labels=args.labels,
         )
         existing_ids = {lyr["id"] for lyr in layers}
         for _, lyr in auto_layers:
             if lyr["id"] not in existing_ids:
                 layers.append(lyr)
                 existing_ids.add(lyr["id"])
+        cat_path = args.s57_catalogue
+        if not cat_path:
+            default_cat = Path(__file__).resolve().parent / "dist" / "assets" / "s52" / "s57objectclasses.csv"
+            if default_cat.exists():
+                cat_path = default_cat
+        if cat_path and cat_path.exists():
+            catalogue = parse_s57_catalogue(cat_path)
+            for ign in ["$AREAS", "$LINES", "$TEXTS"]:
+                catalogue.pop(ign, None)
+            stub_layers = generate_stub_layers_from_catalog(
+                colors,
+                catalogue,
+                {lu["objl"] for lu in lookups},
+                args.source_name,
+                args.source_layer,
+                priorities,
+            )
+            for _, lyr in stub_layers:
+                if lyr["id"] not in existing_ids:
+                    layers.append(lyr)
+                    existing_ids.add(lyr["id"])
 
     style = {
         "version": 8,
