@@ -16,3 +16,7 @@ style: assets
 
 all: sprite style
 
+
+.PHONY: stage-assets
+stage-assets:
+>bash VDR/scripts/stage_assets_all.sh --force
