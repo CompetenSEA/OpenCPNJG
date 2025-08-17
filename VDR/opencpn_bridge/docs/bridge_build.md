@@ -17,6 +17,17 @@ cmake --build build --config Release
 After compiling, use the CLI against the staging tileserver to verify output
 before pushing images to the registry.
 
+## Staging S-52 Assets
+
+Before building, stage the S-52/S-57 support files required at runtime:
+
+```bash
+python tools/stage_s52_assets.py
+```
+
+This copies the minimal symbol and metadata files from `data/s57data/` into
+`dist/assets/s52/` and generates `assets.manifest.json` with SHA-256 hashes and
+a `PROVENANCE.txt` recording the upstream repository and commit.
 ## Dataset registry
 
 Ingested datasets are tracked in a SQLite database located at `registry/registry.sqlite`.
