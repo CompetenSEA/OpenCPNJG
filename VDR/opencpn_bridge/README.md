@@ -1,75 +1,43 @@
 # OpenCPN Bridge
 
-This directory contains a small experimental bridge exposing parts of the
-[OpenCPN](https://opencpn.org) chart processing stack to Python.  The current
-implementation is a pure Python stub that records chart provenance and
-returns empty feature data.
+This directory provides a small bridge exposing parts of the
+[OpenCPN](https://opencpn.org) chart-processing stack to Python.  At
+import-time it attempts to load a compiled extension and automatically falls
+back to lightweight Python stubs when the extension is unavailable.  The stubs
+record dataset provenance and emit empty but valid tiles so applications can be
+developed without native dependencies.
 
-## Source layout
+## Dynamic loading
 
-| Path | Origin | Notes |
-| ---- | ------ | ----- |
-| `py/bridge.py` | This repository | Python stub implementing the public API. |
-| `CMakeLists.txt`, `pyproject.toml` | This repository | Build and packaging glue. |
-| `cpp/vendor/ocpn-mini/` | Copied from the OpenCPN project | Vendored chart stack used when building the optional C++ extension. Sources retain their original GPLv2+ license. |
-
-The vendored OpenCPN sources are not part of the stub because they depend on
-large portions of the upstream application (wxWidgets, GDAL, PROJ, etc.).
-
-### Syncing with upstream
-
-When OpenCPN is updated, refresh the vendored sources manually:
-
-1. Download a matching OpenCPN release or commit.
-2. Replace the contents of `cpp/vendor/ocpn-mini/` with the new sources.
-3. Resolve any new includes or dependencies by either porting the required
-   code into `opencpn_bridge/` or stubbing it out. Avoid scripting or
-   automatic downloads so that changes can be reviewed carefully.
-
-## Building
-
-The Python stub requires no compilation.  To build the optional C++
-extension based on the ocpn-mini sources, configure CMake with
-`-DOPB_STUB_ONLY=OFF -DOPB_WITH_OCPN_MINI=ON`.
-
-```bash
-cmake -S . -B build
-cmake --build build
-```
-
-The compiled extension module will be placed in `dist/`.
+``opencpn_bridge.py.bridge`` prefers the native
+``opencpn_bridge.opencpn_bridge`` module.  If it cannot be imported the module
+substitutes a pure Python implementation with the same API.  All implementations
+return a ``(data, etag, compressed)`` tuple from ``query_tile_mvt``.
 
 ## Python usage
 
 ```python
-from opencpn_bridge import build_senc, query_tile_mvt
+from opencpn_bridge.py.bridge import build_senc, query_tile_mvt
 
 handle = build_senc("/path/to/dataset", "/tmp/out")
-tile = query_tile_mvt(handle, 0, 0, 0, 0, 0, 0, 0)
-print(tile)
+data, etag, compressed = query_tile_mvt(handle, 0, 0, 0)
 ```
 
-## Notes
+## Command line interface
 
-* Handles returned by `build_senc` are kept for the lifetime of the
-  process.  No explicit destruction API is provided.
-* All functions are protected by a global mutex and are therefore
-  thread‑safe at the expense of potential contention.
-* The vendored OpenCPN sources retain their original GPL licensing.
+The ``opb`` command exposes bridge utilities:
 
-## Coding tasks
+* ``opb stage-s52`` – copy S‑52 symbol assets into ``dist/assets/s52/``.
+* ``opb ingest <dataset_id> <src_root> --type enc|cm93`` – build a SENC and
+  record it in the registry.
+* ``opb serve [--host 0.0.0.0] [--port 8000]`` – run the FastAPI tile server.
 
-These items track future work needed to turn the stub into a functional
-bridge:
+## Registry and staged assets
 
-1. **Port core OpenCPN classes** – introduce minimal stubs for the
-   wxWidgets and GDAL types so that the vendored `s57chart.cpp`, `Osenc.cpp`,
-   and `cm93.cpp` can be compiled.
-2. **Implement SENC generation** – hook `build_senc` up to the S‑57 and
-   CM93 readers once the above compiles.
-3. **Expose feature data** – populate real feature objects in
-   `query_tile_mvt` instead of returning placeholders.
-4. **Automated tests** – add Python and C++ unit tests exercising handle
-   lifetime and basic query behaviour.
-5. **Wheel builds** – extend the packaging configuration to emit wheels for
-   common platforms using `scikit-build-core`.
+Chart metadata is stored in a SQLite registry located at
+``registry/registry.sqlite``.  This file is not committed to version control; a
+placeholder ``registry.sqlite.txt`` is provided.
+
+S‑52 assets staged by ``opb stage-s52`` are written to ``dist/assets/s52/`` with
+an accompanying ``assets.manifest.json``.  These assets are required by the
+tile server when rendering ENC tiles.
