@@ -18,6 +18,20 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from urllib.parse import urlparse
+
+ALLOWLIST = Path(__file__).resolve().parents[1] / "tools" / "allowlist.txt"
+
+
+def _load_allowlist(path: Path) -> set[str]:
+    hosts: set[str] = set()
+    if not path.exists():
+        return hosts
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            hosts.add(line)
+    return hosts
 
 REQUIRED_FILES = {
     "chartsymbols.xml",
@@ -126,7 +140,16 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 "--dest VDR/server-styling/dist/assets/s52 --force'"
             )
     else:
-        _ensure_commit_exists(repo, commit)
+        lock = _parse_lock(args.lock)
+        repo = lock["repo"]
+        repo_path = lock["path"].strip("/")
+        commit = lock["commit"]
+
+        allow_hosts = _load_allowlist(ALLOWLIST)
+        host = urlparse(repo).hostname
+        if host and allow_hosts and host not in allow_hosts:
+            raise SystemExit(f"Host '{host}' not in allowlist {ALLOWLIST}")
+
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             subprocess.run(["git", "init", tmpdir], check=True, stdout=subprocess.DEVNULL)
