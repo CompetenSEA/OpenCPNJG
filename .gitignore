@@ -28,6 +28,8 @@ tags
 VDR/chart-tiler/data/**/*.cog.tif
 VDR/chart-tiler/data/**/*.cog.json
 VDR/chart-tiler/registry.sqlite
+opencpn_bridge/registry/registry.sqlite
+opencpn_bridge/.cache/
 # Native cm93 converter artefacts
 VDR/tools/bin/
 
