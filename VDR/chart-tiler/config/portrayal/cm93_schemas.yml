@@ -1,0 +1,17 @@
+bands:
+  - name: overview
+    zmin: 0
+    zmax: 8
+    members:
+      - LNDARE
+      - DEPARE
+  - name: harbor
+    zmin: 9
+    zmax: 16
+    members:
+      - LNDARE
+      - DEPARE
+      - COALNE
+      - SOUNDG
+      - WRECKS
+      - OBSTRN

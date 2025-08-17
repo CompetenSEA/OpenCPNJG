@@ -10,6 +10,7 @@ pipeline.
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import math
 import os
@@ -50,6 +51,7 @@ except Exception:  # pragma: no cover
 from datasource_stub import features_for_tile
 from mvt_builder import encode_mvt
 from s52_preclass import S52PreClassifier, ContourConfig
+from cm93_rules import apply_scamin
 try:  # pragma: no cover - optional pillow
     from raster_mvp import render_tile as render_raster, RasterMVPUnavailable
 except Exception:  # pragma: no cover
@@ -170,6 +172,8 @@ def _render_mvt(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
     for feat in features_for_tile(bbox, z, x, y):
         props = dict(feat.get("properties", {}))
         objl = props.get("OBJL", "")
+        if not apply_scamin(objl, z):
+            continue
         props.update(classifier.classify(objl, props))
         feat_dict = {"geometry": feat["geometry"], "properties": props}
         feats.append(feat_dict)
@@ -685,3 +689,36 @@ def tiles_geotiff(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Respons
     if len(_geo_cache) > _GEO_CACHE_SIZE:
         _geo_cache.popitem(last=False)
     return Response(data, media_type=media, headers={"X-Tile-Cache": "miss", "Cache-Control": "public, max-age=60"})
+
+
+# --- CM93 vector tiles ------------------------------------------------------
+
+
+@app.get("/tiles/cm93-core/{z}/{x}/{y}.pbf")
+def tiles_cm93_core(z: int, x: int, y: int) -> Response:
+    data = _render_mvt(DEFAULT_CONFIG, z, x, y)
+    return Response(data, media_type="application/x-protobuf", headers={"Cache-Control": "public, max-age=60"})
+
+
+@app.get("/tiles/cm93-label/{z}/{x}/{y}.pbf")
+def tiles_cm93_label(z: int, x: int, y: int) -> Response:
+    data = _render_mvt(DEFAULT_CONFIG, z, x, y)
+    return Response(data, media_type="application/x-protobuf", headers={"Cache-Control": "public, max-age=60"})
+
+
+@app.get("/tiles/cm93/dict.json")
+def tiles_cm93_dict() -> Response:
+    path = STYLING_DIST / "dict.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="dict missing")
+    return Response(path.read_text(), media_type="application/json")
+
+
+@app.get("/tiles/cm93-core.json")
+def tiles_cm93_core_tilejson() -> Dict[str, Any]:
+    return {"tiles": ["/tiles/cm93-core/{z}/{x}/{y}.pbf"], "minzoom": 0, "maxzoom": 16}
+
+
+@app.get("/tiles/cm93-label.json")
+def tiles_cm93_label_tilejson() -> Dict[str, Any]:
+    return {"tiles": ["/tiles/cm93-label/{z}/{x}/{y}.pbf"], "minzoom": 0, "maxzoom": 16}
