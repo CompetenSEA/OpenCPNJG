@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Dict, Iterable, List
 
@@ -11,6 +13,20 @@ from shapely.affinity import translate
 
 
 OffsetDict = Dict[str, tuple[float, float]]
+
+
+def run_cm93_convert(src: Path, out_dir: Path) -> bool:
+    """Invoke the optional native ``cm93_convert`` tool.
+
+    Returns ``True`` if the converter was found and executed, ``False``
+    otherwise so callers may fall back to GDAL or pre-converted sources.
+    """
+
+    cli = shutil.which("cm93_convert")
+    if not cli:
+        return False
+    subprocess.check_call([cli, "--src", str(src), "--out", str(out_dir), "--schema", "vdr"])
+    return True
 
 
 def _load_offsets(path: Path) -> OffsetDict:
@@ -52,3 +68,5 @@ def main() -> None:  # pragma: no cover - CLI helper
 
 if __name__ == "__main__":  # pragma: no cover
     main()
+
+__all__ = ["apply_offsets", "run_cm93_convert"]
