@@ -8,6 +8,8 @@
 | `gui/src/cm93.cpp` | `cm93compchart::GetCMScaleFromVP` | Derives CM93 scale tier from viewport resolution, adjusting by the detail slider (`g_cm93_zoom_factor`) before comparing against predefined scale breaks【F:gui/src/cm93.cpp†L4680-L4703】 |
 | `gui/src/cm93.cpp` | M_COVR handling block | When decoding coverage polygons the code stores per‑cell WGS84 offsets and optional user corrections, building a coverage set used later for object translation【F:gui/src/cm93.cpp†L3450-L3525】【F:gui/src/cm93.cpp†L3560-L3577】 |
 | `gui/src/s57obj.cpp` | `S57Obj::AddAttribute` | Captures the `SCAMIN` attribute so later rendering can drop features below a minimum scale【F:gui/src/s57obj.cpp†L200-L208】 |
+| `gui/src/s57_ocpn_utils.cpp` | `s57_ProcessExtendedLightSectors` | Builds sector arcs from `SECTR1/SECTR2/VALNMR` and `COLOUR`, defaulting to yellow 2.5 NM and marking leading lights via `CATLIT`【F:gui/src/s57_ocpn_utils.cpp†L161-L250】 |
+| `gui/src/s57chart.cpp` | Light description builder | Concatenates `LITCHR`, `SIGGRP`, colour initial, `SIGPER`, `VALNMR` and sector bearings into human‑readable labels【F:gui/src/s57chart.cpp†L5925-L6051】 |
 
 ## Behavioral rules
 
