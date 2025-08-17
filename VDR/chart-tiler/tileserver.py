@@ -1,10 +1,11 @@
 """Minimal FastAPI tile server used for tests and development.
 
-The server intentionally returns placeholder data – a 1×1 PNG for raster tiles
-and a tiny Mapbox Vector Tile containing a single point feature.  Middleware
-enables CORS and gzip; tile responses carry `ETag` and `Cache-Control` headers to
-exercise caching, routing and static file serving without the full rendering
-pipeline.
+The server returns deterministic placeholder data for CM93 tiles and serves
+ENC vector tiles by querying a lightweight OpenCPN bridge.  Features are
+pre‑classified using a tiny subset of S‑52 rules and encoded to Mapbox Vector
+Tiles.  Middleware enables CORS and gzip; tile responses carry `ETag` and
+`Cache-Control` headers to exercise caching, routing and static file serving
+without the full rendering pipeline.
 """
 
 from __future__ import annotations
@@ -53,7 +54,11 @@ try:  # pragma: no cover - redis optional
 except Exception:  # pragma: no cover
     redis = None
 
-from datasource_stub import features_for_tile
+try:
+    from opencpn_bridge import query_features
+except Exception:  # pragma: no cover - optional dependency
+    def query_features(handle, bbox, scale):  # type: ignore
+        return []
 from mvt_builder import encode_mvt
 from s52_preclass import S52PreClassifier, ContourConfig
 from cm93_rules import apply_scamin
@@ -66,12 +71,6 @@ except Exception:  # pragma: no cover
     render_raster = None  # type: ignore
     class RasterMVPUnavailable(Exception):
         pass
-try:
-    from datasource_mbtiles import MBTilesDataSource, get_datasource  # type: ignore
-except Exception:  # pragma: no cover - optional
-    MBTilesDataSource = None  # type: ignore
-    def get_datasource(path: str):  # type: ignore
-        raise RuntimeError("MBTiles support unavailable")
 
 # Allow importing parsing helpers
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "server-styling"))
@@ -198,6 +197,88 @@ def _get_classifier(cfg: ContourConfig) -> S52PreClassifier:
     return S52PreClassifier(cfg, _day_colors, symbols=_symbols)
 
 
+def _rect_polygon(x1: float, y1: float, x2: float, y2: float) -> List[List[List[float]]]:
+    """Return coordinates for a simple rectangle polygon."""
+
+    return [[[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]]]
+
+
+def features_for_tile(bbox, z: int, x: int, y: int) -> List[Dict[str, Any]]:
+    """Yield deterministic features for the given tile.
+
+    This mirrors the behaviour of the previous datasource_stub module so tests
+    remain deterministic for CM93 placeholder tiles.
+    """
+
+    minx, miny, maxx, maxy = bbox
+    midx = (minx + maxx) / 2.0
+    midy = (miny + maxy) / 2.0
+
+    feats: List[Dict[str, Any]] = []
+    feats.append(
+        {
+            "geometry": {"type": "Polygon", "coordinates": _rect_polygon(minx, miny, midx, maxy)},
+            "properties": {"OBJL": "LNDARE"},
+        }
+    )
+    feats.append(
+        {
+            "geometry": {"type": "Polygon", "coordinates": _rect_polygon(midx, miny, maxx, midy)},
+            "properties": {"OBJL": "DEPARE", "DRVAL1": 0.0, "DRVAL2": 5.0},
+        }
+    )
+    feats.append(
+        {
+            "geometry": {"type": "Polygon", "coordinates": _rect_polygon(midx, midy, maxx, maxy)},
+            "properties": {"OBJL": "DEPARE", "DRVAL1": 10.0, "DRVAL2": 100.0},
+        }
+    )
+    vals = [5.0, 10.0, 15.0]
+    for i, v in enumerate(vals):
+        x_coord = midx + (i + 1) * (maxx - midx) / 4.0
+        feats.append(
+            {
+                "geometry": {"type": "LineString", "coordinates": [[x_coord, miny], [x_coord, maxy]]},
+                "properties": {
+                    "OBJL": "DEPCNT",
+                    "VALDCO": v,
+                    "QUAPOS": 3 if i == 1 else 1,
+                },
+            }
+        )
+    feats.append(
+        {
+            "geometry": {"type": "LineString", "coordinates": [[midx, miny], [midx, maxy]]},
+            "properties": {"OBJL": "COALNE"},
+        }
+    )
+    sound_vals = [2.0, 15.0]
+    for i, val in enumerate(sound_vals):
+        sx = midx + (i + 1) * (maxx - midx) / 3.0
+        sy = miny + (i + 1) * (maxy - miny) / 3.0
+        feats.append(
+            {
+                "geometry": {"type": "Point", "coordinates": [sx, sy]},
+                "properties": {"OBJL": "SOUNDG", "VALSOU": val},
+            }
+        )
+    hx = midx + (maxx - midx) / 2.0
+    hy = midy
+    feats.append(
+        {
+            "geometry": {"type": "Point", "coordinates": [hx, hy]},
+            "properties": {"OBJL": "WRECKS", "VALSOU": 3.0},
+        }
+    )
+    feats.append(
+        {
+            "geometry": {"type": "Point", "coordinates": [hx, hy + (maxy - midy) / 4.0]},
+            "properties": {"OBJL": "OBSTRN", "VALSOU": 20.0},
+        }
+    )
+    return feats
+
+
 def _build_features(cfg: ContourConfig, z: int, x: int, y: int) -> List[Dict[str, Any]]:
     bbox = _tile_bbox(z, x, y)
     classifier = _get_classifier(cfg)
@@ -307,6 +388,35 @@ def _render_png_mvp(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
     return render_raster(z, x, y, feats, _day_colors)
 
 
+@lru_cache(maxsize=512)
+def _render_enc_mvt(ds: str, cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
+    """Render an ENC tile by querying features and encoding to MVT."""
+
+    bbox = _tile_bbox(z, x, y)
+    scale = 2 ** z
+    raw_feats = query_features(ds, bbox, scale)
+    classifier = _get_classifier(cfg)
+    feats: List[Dict[str, Any]] = []
+    contours: List[Dict[str, Any]] = []
+    for feat in raw_feats:
+        props = dict(feat.get("properties", {}))
+        objl = props.get("OBJL", "")
+        if not apply_scamin(objl, z):
+            continue
+        props.update(classifier.classify(objl, props))
+        props["OBJL"] = _OBJL_CODES.get(objl, 0)
+        feat_dict = {"geometry": feat["geometry"], "properties": props}
+        feats.append(feat_dict)
+        if objl == "DEPCNT":
+            contours.append(feat_dict)
+    mark = S52PreClassifier.finalize_tile(contours, cfg)
+    for idx in mark:
+        props = contours[idx]["properties"]
+        props["role"] = "safety"
+        props["isSafety"] = True
+    return encode_mvt(feats)
+
+
 def _get_from_redis(key: str) -> Optional[bytes]:  # pragma: no cover - depends on redis
     if _redis:
         cached = _redis.get(key)
@@ -319,41 +429,6 @@ def _get_from_redis(key: str) -> Optional[bytes]:  # pragma: no cover - depends 
 def _set_redis(key: str, value: bytes) -> None:  # pragma: no cover - depends on redis
     if _redis:
         _redis.set(key, value, ex=_redis_ttl or None)
-
-
-def _serve_mbtiles(
-    mb: MBTilesDataSource,
-    ds_id: str,
-    z: int,
-    x: int,
-    y: int,
-    fmt: str,
-    cfg: ContourConfig,
-) -> Response:
-    if fmt != "mvt":
-        return JSONResponse(
-            {"error": "unsupported format", "supported": ["mvt"]}, status_code=415
-        )
-    if z < 0 or x < 0 or y < 0 or x >= 2**z or y >= 2**z:
-        return JSONResponse({"error": "invalid tile"}, status_code=422)
-    key = _cache_key(fmt, cfg, z, x, y, ds_id)
-    cached = _get_from_redis(key)
-    cache_state = "hit" if cached is not None else "miss"
-    etag_src = f"{mb.path}:{z}:{x}:{y}".encode()
-    etag = hashlib.sha1(etag_src).hexdigest()
-    headers = {
-        "X-Tile-Cache": cache_state,
-        "Cache-Control": "public, max-age=60",
-        "ETag": etag,
-        "Vary": "Accept-Encoding",
-    }
-    if cached is not None:
-        return Response(content=cached, media_type="application/x-protobuf", headers=headers)
-    data = mb.get_tile(z, x, y)
-    if data is None:
-        return Response(status_code=204, headers=headers)
-    _set_redis(key, data)
-    return Response(content=data, media_type="application/x-protobuf", headers=headers)
 
 
 @app.get("/tiles/cm93/{z}/{x}/{y}.png")
@@ -450,7 +525,7 @@ def tiles(
 
 
 # ---------------------------------------------------------------------------
-# ENC endpoint (MBTiles backed)
+# ENC endpoint via OpenCPN bridge
 # ---------------------------------------------------------------------------
 
 
@@ -469,10 +544,25 @@ def tiles_enc_dataset(
     dataset = get_dataset(ds)
     if not dataset:
         return JSONResponse({"error": "dataset not found"}, status_code=404)
+    if fmt != "mvt":
+        return JSONResponse({"error": "unsupported format", "supported": ["mvt"]}, status_code=415)
+    if z < 0 or x < 0 or y < 0 or x >= 2**z or y >= 2**z:
+        return JSONResponse({"error": "invalid tile"}, status_code=422)
     cfg = _cfg_from_params(sc, safety, shallow, deep)
-    mb = get_datasource(str(dataset.path))
+    key = _cache_key(fmt, cfg, z, x, y, ds)
     start = time.perf_counter()
-    resp = _serve_mbtiles(mb, ds, z, x, y, fmt, cfg)
+    cached = _get_from_redis(key)
+    cache_state = "hit" if cached is not None else "miss"
+    if cached is not None:
+        data = cached
+    else:
+        before = _render_enc_mvt.cache_info().hits
+        data = _render_enc_mvt(ds, cfg, z, x, y)
+        after = _render_enc_mvt.cache_info().hits
+        if after > before:
+            cache_state = "hit"
+            _cache_hits.inc()
+        _set_redis(key, data)
     duration_ms = (time.perf_counter() - start) * 1000
     logger.info(
         "fmt=%s ds=%s z=%d x=%d y=%d cache=%s ms=%.2f",
@@ -481,10 +571,17 @@ def tiles_enc_dataset(
         z,
         x,
         y,
-        resp.headers.get("X-Tile-Cache", "miss"),
+        cache_state,
         duration_ms,
     )
-    return resp
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "X-Tile-Cache": cache_state,
+        "Cache-Control": "public, max-age=60",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
+    return Response(content=data, media_type="application/x-protobuf", headers=headers)
 
 
 @app.get("/tiles/enc/{z}/{x}/{y}")
@@ -532,11 +629,8 @@ def get_datasource_config() -> Dict[str, object]:
     datasets = list_datasets()
     if datasets:
         return {
-            "type": "mbtiles",
-            "datasets": [
-                {"id": d.id, "path": str(d.path), "summary": get_datasource(str(d.path)).summary()}
-                for d in datasets
-            ],
+            "type": "enc",
+            "datasets": [{"id": d.id, "path": str(d.path)} for d in datasets],
         }
     return {"type": "stub"}
 
