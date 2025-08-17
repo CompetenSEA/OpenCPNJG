@@ -27,6 +27,18 @@ import yaml
 def _load_schema(path: Path) -> Dict[str, Any]:
     with path.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
+# Static mapping; in real pipeline this would be generated from schema
+_MAPPING = {
+    1: "LNDARE",
+    2: "DEPARE",
+    3: "DEPCNT",
+    4: "COALNE",
+    5: "SOUNDG",
+    6: "WRECKS",
+    7: "OBSTRN",
+    8: "LIGHTS",
+}
+
 
 
 def build(

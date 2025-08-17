@@ -11,8 +11,10 @@ sys.path.insert(0, str(BASE))
 import tileserver
 from lights import build_light_character
 from datasource_stub import features_for_tile as _base_features
+from dict_builder import _MAPPING
 
 client = TestClient(tileserver.app)
+OBJL = {v: k for k, v in _MAPPING.items()}
 
 LIGHT_ATTRS = {
     "LITCHR": "Fl",
@@ -50,7 +52,7 @@ def test_core_contains_sector_geometry():
     assert resp.status_code == 200
     tile = _decode(resp.content)
     feats = tile["features"]["features"]
-    lights = [f for f in feats if f["properties"].get("OBJL") == "LIGHTS"]
+    lights = [f for f in feats if f["properties"].get("OBJL") == OBJL["LIGHTS"]]
     assert lights
 
 
@@ -61,6 +63,6 @@ def test_label_carries_character_code():
     feats = tile["features"]["features"]
     code = build_light_character(LIGHT_ATTRS)
     assert any(
-        f["properties"].get("text") == code and f["properties"].get("OBJL") == "LIGHTS"
+        f["properties"].get("text") == code and f["properties"].get("OBJL") == OBJL["LIGHTS"]
         for f in feats
     )
