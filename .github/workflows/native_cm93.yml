@@ -1,0 +1,26 @@
+name: native-cm93-converter
+
+on:
+  push:
+    paths:
+      - 'VDR/tools/cm93_convert/**'
+      - '.github/workflows/native_cm93.yml'
+  pull_request:
+    paths:
+      - 'VDR/tools/cm93_convert/**'
+      - '.github/workflows/native_cm93.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Build cm93_convert
+        run: |
+          cmake -S VDR/tools/cm93_convert -B build
+          cmake --build build --config Release
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: cm93_convert-linux-x86_64
+          path: build/cm93_convert
