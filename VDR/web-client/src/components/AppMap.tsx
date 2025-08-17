@@ -1,5 +1,7 @@
 import maplibregl from 'maplibre-gl';
 import { useEffect, useRef } from 'react';
+import { fetchCharts } from '../features/charts';
+import { encSource } from '../layers/enc';
 
 export interface MarinerParams {
   safety: number;
@@ -10,20 +12,29 @@ export interface MarinerParams {
 export function createMapAPI(map: any) {
   const params: MarinerParams = { safety: 10, shallow: 5, deep: 30 };
   let datasetId = '';
+  let s52Colors: Record<string, string> = {};
+  if (typeof fetch === 'function') {
+    Promise.all([
+      fetch('/assets/s52/sprite.json').then((r) => r.json()).catch(() => null),
+      fetch('/assets/s52/colors.json').then((r) => r.json()).catch(() => ({})),
+    ])
+      .then(([, colors]) => {
+        s52Colors = colors || {};
+      })
+      .catch(() => {});
+  }
   const api: any = {
     async loadCharts() {
-      const resp = await fetch('/charts');
-      const data = await resp.json();
+      const data = await fetchCharts();
       return data.enc?.datasets || [];
     },
     setDataset(id: string, bounds?: number[]) {
       datasetId = id;
       const style = map.getStyle ? map.getStyle() : { sources: { enc: { tiles: [] } } };
-      style.sources.enc = {
-        type: 'vector',
-        tiles: [`/tiles/enc/${id}/{z}/{x}/{y}`],
-      };
+      style.sources.enc = encSource(id);
       style.sources.base = style.sources.enc;
+      style.sprite = '/assets/s52/sprite';
+      style.metadata = { ...(style.metadata || {}), s52Colors };
       map.setStyle(style);
       if (bounds && map.fitBounds) {
         map.fitBounds([
