@@ -1,0 +1,24 @@
+objects:
+  - id: 1
+    objl: LNDARE
+  - id: 2
+    objl: DEPARE
+    label: [DRVAL1, DRVAL2]
+  - id: 3
+    objl: DEPCNT
+    label: [VALDCO]
+  - id: 4
+    objl: COALNE
+  - id: 5
+    objl: SOUNDG
+    label: [VALSOU]
+  - id: 6
+    objl: WRECKS
+    label: [VALSOU]
+  - id: 7
+    objl: OBSTRN
+    label: [VALSOU]
+  - id: 8
+    objl: LIGHTS
+lights:
+  '1034392917': "Fl (3) R 5s 0.05 0-90"
