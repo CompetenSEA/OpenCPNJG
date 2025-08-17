@@ -15,6 +15,13 @@ GET /metrics
 GET /healthz
 ```
 
+## SENC ingestion
+Use `opencpn_ingest.py` to build OpenCPN `.senc` caches and register them:
+
+```
+python opencpn_ingest.py SOURCE DATASET_ID
+```
+
 ## Cache keys
 Tiles are cached by `fmt:ds:z/x/y:safety,shallow,deep`. Set `MBTILES_CACHE_SIZE` to tune the in‑memory LRU.
 
@@ -29,6 +36,9 @@ CREATE TABLE IF NOT EXISTS charts (
   bbox TEXT,
   minzoom INTEGER,
   maxzoom INTEGER,
+  scale_min INTEGER,
+  scale_max INTEGER,
+  senc_path TEXT,
   updated_at TEXT,
   tags TEXT,
   status TEXT
