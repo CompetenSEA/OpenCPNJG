@@ -1,0 +1,10 @@
+NotoSans-Regular.ttf
+Source: https://github.com/notofonts/noto-fonts/blob/main/hinted/ttf/NotoSans/NotoSans-Regular.ttf
+Version: 2.008
+License: SIL Open Font License 1.1
+
+To bake glyphs:
+1. Download the font from the source URL above and copy it here as `NotoSans-Regular.ttf`.
+2. Verify the download against the SHA256 in `VDR/server-styling/fonts.lock`.
+3. Run `node VDR/scripts/bake_glyphs.js` to generate PBFs in `glyphs/{fontstack}/{range}.pbf`.
+4. Copy those PBF files to your deployment location; do **not** commit fonts or glyphs to git.
