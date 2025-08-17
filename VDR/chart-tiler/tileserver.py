@@ -118,7 +118,9 @@ async def _metrics_middleware(request: Request, call_next):
     response = await call_next(request)
     path = request.url.path
     kind: Optional[str] = None
-    if path.startswith("/tiles/cm93-core"):
+    if path.startswith("/tiles/cm93/"):
+        kind = "cm93-core"
+    elif path.startswith("/tiles/cm93-core"):
         kind = "cm93-core"
     elif path.startswith("/tiles/cm93-label"):
         kind = "cm93-label"
@@ -916,6 +918,23 @@ def tiles_geotiff(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Respons
 
 
 # --- CM93 vector tiles ------------------------------------------------------
+
+
+@app.get("/tiles/cm93/{ds}/{z}/{x}/{y}.pbf")
+def tiles_cm93_dataset(ds: str, z: int, x: int, y: int) -> Response:
+    dataset = reg.get(ds)
+    if not dataset:
+        return JSONResponse({"error": "dataset not found"}, status_code=404)
+    if z < 0 or x < 0 or y < 0 or x >= 2**z or y >= 2**z:
+        return JSONResponse({"error": "invalid tile"}, status_code=422)
+    data = _query_mvt("cm93_mvt_core", z, x, y)
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "Cache-Control": "public, max-age=60",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
+    return Response(data, media_type="application/x-protobuf", headers=headers)
 
 
 @app.get("/tiles/cm93-core/{z}/{x}/{y}.pbf")

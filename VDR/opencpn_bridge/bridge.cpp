@@ -4,21 +4,26 @@
 #include <unordered_map>
 
 // Internal storage for chart handles.  Each handle maps to the
-// original chart path.  No chart data is actually parsed in this
-// stub implementation.
+// original chart path and chart type.  No chart data is actually
+// parsed in this stub implementation.
 namespace {
+struct ChartInfo {
+  std::string path;
+  std::string type;
+};
 std::mutex g_mutex;  // protects access to the handle map
-std::unordered_map<std::string, std::string> g_charts;
+std::unordered_map<std::string, ChartInfo> g_charts;
 unsigned long g_next_id = 1;
 }
 
 // Build an in-memory SENC from the chart at `path`.
-// In this simplified bridge we merely store the path and return
-// a generated handle.  Thread safe.
-std::string build_senc(const std::string &path) {
+// In this simplified bridge we merely store the path and chart type
+// and return a generated handle.  Thread safe.
+std::string build_senc(const std::string &path,
+                       const std::string &chart_type) {
   std::lock_guard<std::mutex> lock(g_mutex);
-  std::string handle = "senc_" + std::to_string(g_next_id++);
-  g_charts[handle] = path;
+  std::string handle = chart_type + "_" + std::to_string(g_next_id++);
+  g_charts[handle] = {path, chart_type};
   return handle;
 }
 

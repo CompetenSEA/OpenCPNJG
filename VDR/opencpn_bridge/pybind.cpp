@@ -8,6 +8,7 @@ namespace py = pybind11;
 PYBIND11_MODULE(opencpn_bridge, m) {
   m.doc() = "Minimal OpenCPN chart bridge";
   m.def("build_senc", &build_senc, py::arg("path"),
+        py::arg("chart_type") = "s57",
         "Load a chart and build an in-memory SENC, returning a handle");
 
   m.def(

@@ -138,6 +138,21 @@ class Registry:
         )
         self.conn.commit()
 
+    def register_cm93(self, meta_path: Path, db_path: Path) -> None:
+        info = json.loads(Path(meta_path).read_text())
+        rid = db_path.stem
+        bbox = info.get("bbox", [0, 0, 0, 0])
+        scale_min = int(info.get("scale_min", 0))
+        scale_max = int(info.get("scale_max", 0))
+        name = info.get("name", rid)
+        ts = time.time()
+        cur = self.conn.cursor()
+        cur.execute(
+            "REPLACE INTO charts (id,kind,name,bbox,minzoom,maxzoom,updated_at,scale_min,scale_max,path) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (rid, "cm93", name, json.dumps(bbox), 0, 0, ts, scale_min, scale_max, str(db_path)),
+        )
+        self.conn.commit()
+
     # -- scanning -----------------------------------------------------------------
     def scan(self, paths: Iterable[Path]) -> None:
         """Scan provided directories for chart artefacts."""

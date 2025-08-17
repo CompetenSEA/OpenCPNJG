@@ -10,11 +10,14 @@ struct Feature {
 };
 
 // Build an in-memory SENC from the chart at `path`.
-// Returns a string handle identifying the loaded chart.
+// `chart_type` may be "s57" or "cm93" and is used to select the
+// appropriate ingestion path.  The returned string is an opaque
+// handle identifying the loaded chart.
 // The caller owns the returned handle and should keep it until
 // all queries are finished. Handles are released automatically
 // when the process exits.
-std::string build_senc(const std::string &path);
+std::string build_senc(const std::string &path,
+                       const std::string &chart_type);
 
 // Query features from the chart identified by `handle` intersecting
 // the bounding box.  `scale` is the desired display scale.
