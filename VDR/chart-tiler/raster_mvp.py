@@ -58,6 +58,25 @@ def _hex_to_rgba(hex_color: str) -> tuple[int, int, int, int]:
     return r, g, b, 255
 
 
+def resample_image(img: "Image.Image", *, nodata: int | None, categorical: bool) -> "Image.Image":
+    """Resample *img* respecting chart metadata.
+
+    ``categorical`` selects nearest neighbour resampling for discrete layers
+    and bilinear interpolation for continuous data.  When ``nodata`` is
+    provided pixels with this value are made fully transparent.
+    """
+
+    if Image is None:
+        raise RasterMVPUnavailable("Pillow not installed")
+    resample = Image.NEAREST if categorical else Image.BILINEAR
+    out = img.resize((256, 256), resample=resample)
+    if nodata is not None:
+        alpha = out.point(lambda px: 0 if px == nodata else 255)
+        out = out.convert("RGBA")
+        out.putalpha(alpha)
+    return out
+
+
 def render_tile(z: int, x: int, y: int, features: List[Dict[str, Any]], colors: Dict[str, str]) -> bytes:
     if Image is None or ImageDraw is None:
         raise RasterMVPUnavailable("Pillow not installed")
