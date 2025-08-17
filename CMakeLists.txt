@@ -2433,6 +2433,13 @@ if (NOT SKIP_PLUGINS)
 endif ()
 
 #
+# Python bridge exposing minimal chart stub.
+#
+option(OPB_STUB_ONLY "Build only the stub implementation of the OpenCPN bridge" ON)
+option(OPB_WITH_OCPN_MINI "Enable vendor OCPN mini bridge code" OFF)
+add_subdirectory(opencpn_bridge/cpp)
+
+#
 # Prepare CPACK configuration
 #
 if (WIN32)
