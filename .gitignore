@@ -30,3 +30,7 @@ VDR/chart-tiler/data/**/*.cog.json
 VDR/chart-tiler/registry.sqlite
 # Native cm93 converter artefacts
 VDR/tools/bin/
+
+# VDR fonts and generated glyphs
+VDR/assets/fonts/*.ttf
+glyphs/

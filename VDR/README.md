@@ -26,3 +26,9 @@ npm test --prefix VDR/web-client
 Artefacts are written under `chart-tiler/data/*` and `server-styling/dist/*`.
 
 See `docs/map_pipeline.md` for the full pipeline, database schema and testing matrix.
+
+## Fonts and glyphs
+Font binaries are intentionally excluded from version control. Fetch the fonts
+listed in `server-styling/fonts.lock` into `assets/fonts/` and run
+`node scripts/bake_glyphs.js` to produce `glyphs/{fontstack}/{range}.pbf`.
+Copy the glyphs to your deployment target as needed.

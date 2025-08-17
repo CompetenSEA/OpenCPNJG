@@ -1,0 +1,43 @@
+name: VDR Glyphs
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+  push:
+    paths:
+      - 'VDR/scripts/bake_glyphs.js'
+      - 'VDR/server-styling/fonts.lock'
+      - 'VDR/assets/fonts/**'
+      - '.github/workflows/vdr-glyphs.yml'
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+      - name: Install fontnik
+        run: npm install fontnik
+      - name: Fetch fonts
+        run: |
+          mkdir -p VDR/assets/fonts
+          jq -r '.fonts[] | "\(.url) \(.file) \(.sha256)"' VDR/server-styling/fonts.lock \
+            | while read url file sha; do
+                curl -L "$url" -o "VDR/assets/fonts/$file"
+                echo "$sha  VDR/assets/fonts/$file" | sha256sum -c -
+              done
+      - name: Bake glyphs
+        run: node VDR/scripts/bake_glyphs.js
+      - name: Upload glyphs artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: vdr-glyphs
+          path: glyphs
+      - name: Upload release assets
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: glyphs/**/*
