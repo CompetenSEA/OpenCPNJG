@@ -41,6 +41,18 @@ RETURNS bytea AS $$
                f.objl, f.text
         FROM cm93_labels f, bounds
         WHERE apply_scamin(f.objl, z)
+    ),
+    lightlabels AS (
+        SELECT ST_AsMVTGeom(ST_Intersection(l.pt, bounds.geom), bounds.geom, 4096, 64, true) AS geom,
+               'LIGHTS' AS objl,
+               l.character AS text
+        FROM cm93_lights l, bounds
+        WHERE z >= 12
+    ),
+    allgeom AS (
+        SELECT * FROM mvtgeom
+        UNION ALL
+        SELECT * FROM lightlabels
     )
-    SELECT ST_AsMVT(mvtgeom, 'features', 4096, 'geom') FROM mvtgeom;
+    SELECT ST_AsMVT(allgeom, 'features', 4096, 'geom') FROM allgeom;
 $$ LANGUAGE SQL IMMUTABLE;
