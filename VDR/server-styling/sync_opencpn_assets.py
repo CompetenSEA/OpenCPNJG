@@ -102,9 +102,16 @@ def _write_lock(
 
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--lock", type=Path, required=True, help="Path to lock file")
+    default_lock = Path(__file__).with_name("opencpn-assets.lock")
+    default_dest = Path(__file__).with_name("assets")
     parser.add_argument(
-        "--dest", type=Path, required=True, help="Destination directory for assets"
+        "--lock", type=Path, default=default_lock, help="Path to lock file"
+    )
+    parser.add_argument(
+        "--dest",
+        type=Path,
+        default=default_dest,
+        help="Destination directory for assets",
     )
     parser.add_argument(
         "--force", action="store_true", help="Overwrite destination if it exists"
@@ -136,8 +143,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
             print(f"Error: {e}", flush=True)
             raise SystemExit(
                 "chartsymbols.xml missing. Run 'python VDR/server-styling/"
-                "sync_opencpn_assets.py --lock VDR/server-styling/opencpn-assets.lock "
-                "--dest VDR/server-styling/dist/assets/s52 --force'"
+                "sync_opencpn_assets.py --force'"
             )
     else:
         lock = _parse_lock(args.lock)
@@ -179,8 +185,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 print(f"Error: {e}", flush=True)
                 raise SystemExit(
                     "chartsymbols.xml missing. Run 'python VDR/server-styling/"
-                    "sync_opencpn_assets.py --lock VDR/server-styling/opencpn-assets.lock "
-                    "--dest VDR/server-styling/dist/assets/s52 --force'"
+                    "sync_opencpn_assets.py --force'"
                 )
 
     manifest_path = args.dest / "assets.manifest.json"

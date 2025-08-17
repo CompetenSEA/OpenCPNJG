@@ -2,19 +2,19 @@
 
 Builds MapLibre styles and sprites from OpenCPN S‑52 assets and reports coverage metrics.
 
-## Assets staging
+## Regenerating assets
 ```
-python VDR/server-styling/sync_opencpn_assets.py --lock VDR/server-styling/opencpn-assets.lock --dest VDR/server-styling/dist/assets/s52 --force
+python VDR/server-styling/sync_opencpn_assets.py --force
 ```
+Assets are downloaded according to `opencpn-assets.lock` and written to `server-styling/assets/`.
 
 ## Sprite & style build
 ```
-python VDR/server-styling/tools/build_all_styles.py --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml --tiles-url "/tiles/cm93/{z}/{x}/{y}?fmt=mvt&safety={safety}&shallow={shallow}&deep={deep}" --sprite-base "/sprites/s52-day" --sprite-prefix "s52-" --glyphs "/glyphs/{fontstack}/{range}.pbf" --emit-name "OpenCPN S-52 {palette}" --auto-cover --labels
-node VDR/server-styling/tools/validate_style.mjs VDR/server-styling/dist/style.s52.day.json
+python VDR/server-styling/build_style_json.py --palette day
 ```
-Generated styles live under `server-styling/dist/` with day/dusk/night palettes.
+This bundles the assets under `server-styling/dist/`, generates the sprite atlas and writes `style.s52.{palette}.json`. The style references `/tiles/cm93-core.json` and `/tiles/cm93-label.json` sources and expects glyphs at `/glyphs/{fontstack}/{range}.pbf` and sprites at `/sprites/s52-{palette}`.
 
-The tileserver serves these assets at `/style/s52.{palette}.json` and `/sprites/s52-day.{json|png}` with ETag and caching headers.
+Generated output lives under `server-styling/dist/`.
 
 ## Coverage tools
 ```
