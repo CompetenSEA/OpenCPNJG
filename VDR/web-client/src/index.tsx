@@ -1,6 +1,6 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { MapComponent } from './MapComponent';
+import { AppMap } from './AppMap';
 
 declare global {
   interface Window {
@@ -12,7 +12,7 @@ declare global {
 const container = document.getElementById('root');
 if (container) {
   const root = createRoot(container);
-  root.render(<MapComponent />);
+  root.render(<AppMap />);
 }
 
 // Prevent default install prompts (no A2HS UI)

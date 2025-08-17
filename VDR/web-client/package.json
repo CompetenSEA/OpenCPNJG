@@ -3,14 +3,22 @@
   "version": "0.0.1",
   "private": true,
   "dependencies": {
-    "deck.gl": "^8.9.0",
+    "@deck.gl/core": "^8.9.0",
+    "@deck.gl/layers": "^8.9.0",
+    "@deck.gl/mapbox": "^8.9.0",
+    "@deck.gl/react": "^8.9.0",
     "maplibre-gl": "^2.4.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "ts-node": "^10.9.2",
     "zustand": "^4.5.2"
   },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "vite": "^5.0.0"
+  },
   "scripts": {
+    "start": "vite",
     "test": "TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/AppMap.test.ts && TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/test_appmap_bases.spec.ts && TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/__tests__/base_picker.spec.ts && TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/__tests__/AppMap.enc.spec.ts && TS_NODE_TRANSPILE_ONLY=1 TS_NODE_COMPILER_OPTIONS=\"{\\\"jsx\\\":\\\"react\\\",\\\"module\\\":\\\"commonjs\\\"}\" node -r ts-node/register src/components/__tests__/visibility_toggle.spec.ts"
   }
 }
