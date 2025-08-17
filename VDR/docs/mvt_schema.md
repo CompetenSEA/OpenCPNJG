@@ -7,3 +7,31 @@ Vector tiles expose two planes:
 
 All tiles use `EXTENT=4096` and honour the declarative `SCAMIN` rules in `chart-tiler/config/portrayal/scamin.yml`.
 The dictionary at `/tiles/cm93/dict.json` maps integer IDs to S‑57 object class names for style lookup.
+
+## Lights
+
+- Sector geometries are included in the **core** plane for `z ≥ 12`. Ranges are
+  simplified with a coarser tolerance at low zooms to reduce tile size.
+- The **label** plane carries dictionary‑coded light character strings produced
+  by `build_light_character`. Clients resolve these codes using the shared
+  dictionary and display colours, periods and ranges accordingly.
+
+Example light feature (`cm93-core`):
+
+```json
+{
+  "type": "Feature",
+  "geometry": { "type": "Polygon", ... },
+  "properties": { "OBJL": "LIGHTS" }
+}
+```
+
+Example label (`cm93-label`):
+
+```json
+{
+  "type": "Feature",
+  "geometry": { "type": "Point", ... },
+  "properties": { "text": 2112210742 }
+}
+```

@@ -11,8 +11,23 @@ RETURNS bytea AS $$
                f.objl
         FROM cm93_features f, bounds
         WHERE apply_scamin(f.objl, z)
+    ),
+    lightgeom AS (
+        SELECT ST_AsMVTGeom(
+                   ST_SimplifyPreserveTopology(ST_Intersection(l.geom, bounds.geom),
+                                              CASE WHEN z < 14 THEN 50 ELSE 10 END,
+                                              true),
+                   bounds.geom, 4096, 64, true) AS geom,
+               'LIGHTS' AS objl
+        FROM cm93_lights l, bounds
+        WHERE z >= 12
+    ),
+    allgeom AS (
+        SELECT * FROM mvtgeom
+        UNION ALL
+        SELECT * FROM lightgeom
     )
-    SELECT ST_AsMVT(mvtgeom, 'features', 4096, 'geom') FROM mvtgeom;
+    SELECT ST_AsMVT(allgeom, 'features', 4096, 'geom') FROM allgeom;
 $$ LANGUAGE SQL IMMUTABLE;
 
 CREATE OR REPLACE FUNCTION cm93_mvt_label(z integer, x integer, y integer)
