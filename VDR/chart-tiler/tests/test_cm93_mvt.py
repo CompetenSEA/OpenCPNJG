@@ -25,7 +25,7 @@ def test_tile_endpoints_and_dict(tmp_path):
     resp = client.get("/tiles/cm93/dict.json")
     assert resp.status_code == 200
     mapping = json.loads(resp.text)
-    assert "1" in mapping or 1 in mapping
+    assert "1" in mapping["objects"]
 
     # Low zoom – soundings filtered by SCAMIN
     resp = client.get("/tiles/cm93-core/8/0/0.pbf")
