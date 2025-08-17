@@ -1,5 +1,9 @@
 -- CM93 Mapbox Vector Tile helpers
--- These functions are placeholders demonstrating the intended PostGIS queries.
+--
+-- These PostGIS functions generate Mapbox Vector Tiles for CM93 data.  The
+-- geometry tables are clipped to the requested tile and light sector geometry
+-- is constructed on the fly.  Output properties use compact integer ``objl``
+-- codes matching the dictionary exposed by ``/tiles/cm93/dict.json``.
 
 CREATE OR REPLACE FUNCTION cm93_mvt_core(z integer, x integer, y integer)
 RETURNS bytea AS $$
@@ -20,7 +24,7 @@ RETURNS bytea AS $$
                        true
                    ),
                    bounds.geom, 4096, 64, true) AS geom,
-               'LIGHTS' AS objl
+               8 AS objl
         FROM cm93_lights l
         JOIN LATERAL build_light_sectors(l.pt, l.attrs) AS s(geom) ON true,
              bounds
@@ -48,7 +52,7 @@ RETURNS bytea AS $$
     ),
     lightlabels AS (
         SELECT ST_AsMVTGeom(ST_Intersection(l.pt, bounds.geom), bounds.geom, 4096, 64, true) AS geom,
-               'LIGHTS' AS objl,
+               8 AS objl,
                build_light_character(l.attrs) AS text
         FROM cm93_lights l, bounds
         WHERE z >= 12

@@ -22,6 +22,7 @@ from functools import lru_cache
 from pathlib import Path
 import hashlib
 import resource
+import sqlite3
 from registry import get_registry, ChartRecord, list_datasets, get_dataset
 from typing import Dict, Optional, List, Any
 
@@ -58,6 +59,7 @@ from s52_preclass import S52PreClassifier, ContourConfig
 from cm93_rules import apply_scamin
 from lights import build_light_sectors, build_light_character
 from shapely.geometry import Point, mapping
+from dict_builder import _MAPPING as _DICT_MAPPING
 try:  # pragma: no cover - optional pillow
     from raster_mvp import render_tile as render_raster, RasterMVPUnavailable
 except Exception:  # pragma: no cover
@@ -184,8 +186,11 @@ try:
 except FileNotFoundError:
     _root = ET.Element("root")
     _day_colors = {}
-    _symbols = {}
+_symbols = {}
 DEFAULT_CONFIG = ContourConfig()
+
+# Reverse lookup for compact object codes used in tiles
+_OBJL_CODES: Dict[str, int] = {v: k for k, v in _DICT_MAPPING.items()}
 
 
 @lru_cache(maxsize=32)
@@ -193,15 +198,12 @@ def _get_classifier(cfg: ContourConfig) -> S52PreClassifier:
     return S52PreClassifier(cfg, _day_colors, symbols=_symbols)
 
 
-@lru_cache(maxsize=512)
-def _render_mvt(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
-    """Build a Mapbox Vector Tile for the requested tile."""
-
+def _build_features(cfg: ContourConfig, z: int, x: int, y: int) -> List[Dict[str, Any]]:
     bbox = _tile_bbox(z, x, y)
     classifier = _get_classifier(cfg)
 
-    feats = []
-    contours = []
+    feats: List[Dict[str, Any]] = []
+    contours: List[Dict[str, Any]] = []
     for feat in features_for_tile(bbox, z, x, y):
         props = dict(feat.get("properties", {}))
         objl = props.get("OBJL", "")
@@ -214,16 +216,25 @@ def _render_mvt(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
                 geom = {"type": "LineString", "coordinates": exterior}
             else:
                 geom = json.loads(json.dumps(mapping(sector)))
-            feats.append({"geometry": geom, "properties": {"OBJL": "LIGHTS"}, "id": len(feats) + 1})
+            feats.append(
+                {
+                    "geometry": geom,
+                    "properties": {"OBJL": _OBJL_CODES.get("LIGHTS", 0)},
+                    "id": len(feats) + 1,
+                }
+            )
             code = build_light_character(props)
-            feats.append({
-                "geometry": feat["geometry"],
-                "properties": {"OBJL": "LIGHTS", "text": code},
-            })
+            feats.append(
+                {
+                    "geometry": feat["geometry"],
+                    "properties": {"OBJL": _OBJL_CODES.get("LIGHTS", 0), "text": code},
+                }
+            )
             continue
         if not apply_scamin(objl, z):
             continue
         props.update(classifier.classify(objl, props))
+        props["OBJL"] = _OBJL_CODES.get(objl, 0)
         feat_dict = {"geometry": feat["geometry"], "properties": props}
         feats.append(feat_dict)
         if objl == "DEPCNT":
@@ -233,8 +244,37 @@ def _render_mvt(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
         props = contours[idx]["properties"]
         props["role"] = "safety"
         props["isSafety"] = True
+    return feats
 
+
+@lru_cache(maxsize=512)
+def _render_mvt(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
+    """Build a Mapbox Vector Tile for the requested tile."""
+    feats = _build_features(cfg, z, x, y)
     return encode_mvt(feats)
+
+
+# SQLite-backed helpers used in tests to mimic the PostGIS SQL functions.
+_db = sqlite3.connect(":memory:", check_same_thread=False)
+
+
+def _cm93_mvt_core_py(z: int, x: int, y: int) -> bytes:
+    feats = _build_features(DEFAULT_CONFIG, z, x, y)
+    return sqlite3.Binary(encode_mvt(feats))
+
+
+def _cm93_mvt_label_py(z: int, x: int, y: int) -> bytes:
+    feats = [f for f in _build_features(DEFAULT_CONFIG, z, x, y) if "text" in f.get("properties", {})]
+    return sqlite3.Binary(encode_mvt(feats))
+
+
+_db.create_function("cm93_mvt_core", 3, _cm93_mvt_core_py)
+_db.create_function("cm93_mvt_label", 3, _cm93_mvt_label_py)
+
+
+def _query_mvt(func: str, z: int, x: int, y: int) -> bytes:
+    row = _db.execute(f"SELECT {func}(?, ?, ?)", (z, x, y)).fetchone()
+    return bytes(row[0]) if row and row[0] is not None else b""
 
 
 @lru_cache(maxsize=512)
@@ -786,7 +826,7 @@ def tiles_geotiff(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Respons
 
 @app.get("/tiles/cm93-core/{z}/{x}/{y}.pbf")
 def tiles_cm93_core(z: int, x: int, y: int) -> Response:
-    data = _render_mvt(DEFAULT_CONFIG, z, x, y)
+    data = _query_mvt("cm93_mvt_core", z, x, y)
     etag = hashlib.sha1(data).hexdigest()
     headers = {
         "Cache-Control": "public, max-age=60",
@@ -798,7 +838,7 @@ def tiles_cm93_core(z: int, x: int, y: int) -> Response:
 
 @app.get("/tiles/cm93-label/{z}/{x}/{y}.pbf")
 def tiles_cm93_label(z: int, x: int, y: int) -> Response:
-    data = _render_mvt(DEFAULT_CONFIG, z, x, y)
+    data = _query_mvt("cm93_mvt_label", z, x, y)
     etag = hashlib.sha1(data).hexdigest()
     headers = {
         "Cache-Control": "public, max-age=60",
@@ -823,10 +863,18 @@ def tiles_cm93_dict() -> Response:
     return Response(data, media_type="application/json", headers=headers)
 
 
-@app.get("/tiles/cm93-core.json")
+@app.get("/tiles/cm93-core.tilejson")
 def tiles_cm93_core_tilejson() -> Response:
     data = json.dumps(
-        {"tiles": ["/tiles/cm93-core/{z}/{x}/{y}.pbf"], "minzoom": 0, "maxzoom": 16}
+        {
+            "tilejson": "3.0.0",
+            "tiles": ["/tiles/cm93-core/{z}/{x}/{y}.pbf"],
+            "minzoom": 0,
+            "maxzoom": 16,
+            "bounds": [-180.0, -85.0511, 180.0, 85.0511],
+            "attribution": "© OpenCPN",
+            "vector_layers": [{"id": "features"}],
+        }
     ).encode("utf-8")
     etag = hashlib.sha1(data).hexdigest()
     headers = {
@@ -837,10 +885,18 @@ def tiles_cm93_core_tilejson() -> Response:
     return Response(data, media_type="application/json", headers=headers)
 
 
-@app.get("/tiles/cm93-label.json")
+@app.get("/tiles/cm93-label.tilejson")
 def tiles_cm93_label_tilejson() -> Response:
     data = json.dumps(
-        {"tiles": ["/tiles/cm93-label/{z}/{x}/{y}.pbf"], "minzoom": 0, "maxzoom": 16}
+        {
+            "tilejson": "3.0.0",
+            "tiles": ["/tiles/cm93-label/{z}/{x}/{y}.pbf"],
+            "minzoom": 0,
+            "maxzoom": 16,
+            "bounds": [-180.0, -85.0511, 180.0, 85.0511],
+            "attribution": "© OpenCPN",
+            "vector_layers": [{"id": "features"}],
+        }
     ).encode("utf-8")
     etag = hashlib.sha1(data).hexdigest()
     headers = {
