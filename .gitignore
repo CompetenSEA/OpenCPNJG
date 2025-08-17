@@ -34,3 +34,6 @@ VDR/tools/bin/
 # VDR fonts and generated glyphs
 VDR/assets/fonts/*.ttf
 glyphs/
+opencpn_bridge/dist/assets/s52/*
+!opencpn_bridge/dist/assets/s52/assets.manifest.json
+!opencpn_bridge/dist/assets/s52/PROVENANCE.txt
