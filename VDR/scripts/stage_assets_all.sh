@@ -17,6 +17,7 @@ TOP_ROOT="$(cd "${REPO_ROOT}/.."; pwd)"           # repo root (contains VDR/ and
 BAUV_DIR="${REPO_ROOT}/BAUV"                      # /VDR/BAUV mirror of BAUV-Maps
 DEFAULT_S57_DIR="${TOP_ROOT}/data/s57data"        # OpenCPN assets
 S57_DIR="${S57_ASSETS_DIR:-${DEFAULT_S57_DIR}}"
+ALLOWLIST="${REPO_ROOT}/tools/allowlist.txt"
 
 DEST_BASE="${REPO_ROOT}"
 STYLING="${DEST_BASE}/server-styling/dist"
@@ -39,6 +40,26 @@ done
 
 say(){ echo "==> $*"; }
 do_cmd(){ if [[ $DRY -eq 1 ]]; then echo "[dry-run] $*"; else eval "$@"; fi; }
+
+host_allowed(){
+  local url="$1"
+  local host
+  host=$(python - <<'PY'
+from urllib.parse import urlparse
+import sys
+print(urlparse(sys.argv[1]).hostname or '')
+PY
+"$url")
+  grep -Fxq "$host" "$ALLOWLIST" || {
+    echo "Host '$host' not in allowlist" >&2
+    exit 5
+  }
+}
+
+if [[ -d "${BAUV_DIR}/.git" ]]; then
+  url=$(git -C "${BAUV_DIR}" config --get remote.origin.url 2>/dev/null || true)
+  [[ -n "$url" ]] && host_allowed "$url"
+fi
 
 # --- 1) Stage S-52/S-57 core
 if [[ ! -f "${S57_DIR}/chartsymbols.xml" && -f "${BAUV_DIR}/data/s57data/chartsymbols.xml" ]]; then
