@@ -15,23 +15,14 @@ def _build_style(tmp_path: Path) -> dict:
 </color-table></root>
 """
     )
+    (tmp_path / "rastersymbols-day.png").write_bytes(b"")
     out = tmp_path / "style.json"
     build = Path(__file__).resolve().parents[2] / "server-styling" / "build_style_json.py"
     cmd = [
         sys.executable,
         str(build),
-        "--chartsymbols",
-        str(chartsymbols),
-        "--tiles-url",
-        "x",
-        "--source-name",
-        "s",
-        "--source-layer",
-        "l",
-        "--sprite-base",
-        "/sprites",
-        "--glyphs",
-        "/glyphs/{fontstack}/{range}.pbf",
+        "--assets",
+        str(tmp_path),
         "--labels",
         "--output",
         str(out),

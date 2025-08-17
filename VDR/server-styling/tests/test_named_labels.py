@@ -19,16 +19,12 @@ def _build_style(tmpdir: Path) -> Path:
 </root>
         """.strip()
     )
+    (tmpdir / 'rastersymbols-day.png').write_bytes(b'')
     out = tmpdir / 'style.json'
     cmd = [
         sys.executable,
         str(BUILD),
-        '--chartsymbols', str(chartsymbols),
-        '--tiles-url', 'dummy',
-        '--source-name', 'src',
-        '--source-layer', 'lyr',
-        '--sprite-base', '/sprites',
-        '--glyphs', '/glyphs/{fontstack}/{range}.pbf',
+        '--assets', str(tmpdir),
         '--labels',
         '--output', str(out),
     ]

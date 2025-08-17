@@ -11,6 +11,7 @@ import argparse
 import json
 import re
 import sys
+import shutil
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, List, Set
@@ -851,17 +852,15 @@ def generate_layers_from_lookups(
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--chartsymbols", type=Path, required=True, help="Path to chartsymbols.xml")
-    p.add_argument("--tiles-url", required=True)
-    p.add_argument("--source-name", required=True)
-    p.add_argument("--source-layer", required=True)
-    p.add_argument("--sprite-base", required=True, help="Sprite base URL")
-    p.add_argument("--glyphs", required=True, help="Glyphs URL template")
+    default_output = Path(__file__).resolve().parent / "dist"
+    p.add_argument("--assets", type=Path, help="Directory containing S-52 assets")
+    p.add_argument(
+        "--output-dir",
+        type=Path,
+        default=default_output,
+        help="Directory to write bundled style",
+    )
     p.add_argument("--safety-contour", type=float, default=0.0)
-    p.add_argument("--sprite-prefix", default="", help="Prefix for sprite names")
-    p.add_argument("--emit-name", help="Override style.name in output")
-    p.add_argument("--auto-cover", action="store_true", help="Generate layers for all lookups")
-    p.add_argument("--s57-catalogue", type=Path)
     p.add_argument("--labels", action="store_true", help="Render labels for certain features")
     p.add_argument(
         "--palette",
@@ -869,7 +868,18 @@ def parse_args() -> argparse.Namespace:
         default="day",
         help="Colour palette to use",
     )
-    p.add_argument("--output", type=Path, required=True)
+    # Deprecated options retained for compatibility ---------------------------------
+    p.add_argument("--chartsymbols", type=Path)
+    p.add_argument("--tiles-url")
+    p.add_argument("--source-name")
+    p.add_argument("--source-layer")
+    p.add_argument("--sprite-base")
+    p.add_argument("--glyphs")
+    p.add_argument("--sprite-prefix", default="s52-")
+    p.add_argument("--emit-name")
+    p.add_argument("--auto-cover", action="store_true")
+    p.add_argument("--s57-catalogue", type=Path)
+    p.add_argument("--output", type=Path)
     return p.parse_args()
 
 
@@ -880,26 +890,31 @@ def _fail(msg: str) -> None:
 
 def main() -> None:  # pragma: no cover - CLI wrapper
     args = parse_args()
-    if not args.chartsymbols.exists():
+    assets_dir = args.assets
+    if not assets_dir:
+        if args.chartsymbols:
+            assets_dir = args.chartsymbols.parent
+        else:
+            assets_dir = Path(__file__).resolve().parent / "assets"
+    chartsymbols = assets_dir / "chartsymbols.xml"
+    if not chartsymbols.exists():
         _fail(
             "chartsymbols.xml missing. Run 'python VDR/server-styling/"
-            "sync_opencpn_assets.py --lock VDR/server-styling/opencpn-assets.lock "
-            "--dest VDR/server-styling/dist/assets/s52 --force'"
+            "sync_opencpn_assets.py --force'"
         )
-    root = ET.parse(args.chartsymbols).getroot()
+    root = ET.parse(chartsymbols).getroot()
     palette_map = {"day": "DAY_BRIGHT", "dusk": "DUSK", "night": "NIGHT"}
     colors = parse_palette_colors(root, palette_map[args.palette])
     lookups = parse_lookups(root)
     priorities = _lookup_priorities(lookups)
     symbols = parse_symbols(root)
     linestyles = parse_linestyles(root)
-    patterns = parse_patterns(root)
 
     layers = build_layers(
         colors,
         args.safety_contour,
-        args.source_name,
-        args.source_layer,
+        "cm93-core",
+        "features",
         priorities,
         symbols,
         linestyles,
@@ -912,9 +927,9 @@ def main() -> None:  # pragma: no cover - CLI wrapper
             lookups,
             symbols,
             linestyles,
-            patterns,
-            args.source_name,
-            args.source_layer,
+            parse_patterns(root),
+            "cm93-core",
+            "features",
             priorities,
             labels=args.labels,
         )
@@ -925,7 +940,7 @@ def main() -> None:  # pragma: no cover - CLI wrapper
                 existing_ids.add(lyr["id"])
         cat_path = args.s57_catalogue
         if not cat_path:
-            default_cat = Path(__file__).resolve().parent / "dist" / "assets" / "s52" / "s57objectclasses.csv"
+            default_cat = assets_dir / "s57objectclasses.csv"
             if default_cat.exists():
                 cat_path = default_cat
         if cat_path and cat_path.exists():
@@ -936,8 +951,8 @@ def main() -> None:  # pragma: no cover - CLI wrapper
                 colors,
                 catalogue,
                 {lu["objl"] for lu in lookups},
-                args.source_name,
-                args.source_layer,
+                "cm93-core",
+                "features",
                 priorities,
             )
             for _, lyr in stub_layers:
@@ -945,14 +960,59 @@ def main() -> None:  # pragma: no cover - CLI wrapper
                     layers.append(lyr)
                     existing_ids.add(lyr["id"])
 
+    if args.output:
+        output_dir = args.output.parent
+        style_path = args.output
+    else:
+        output_dir = args.output_dir
+        style_path = output_dir / f"style.s52.{args.palette}.json"
+    # Bundle assets --------------------------------------------------------
+    dest_assets = output_dir / "assets" / "s52"
+    dest_assets.mkdir(parents=True, exist_ok=True)
+    asset_names = [
+        "chartsymbols.xml",
+        "rastersymbols-day.png",
+        "S52RAZDS.RLE",
+        "s57objectclasses.csv",
+        "s57attributes.csv",
+        "attdecode.csv",
+        "assets.manifest.json",
+    ]
+    for name in asset_names:
+        src = assets_dir / name
+        if src.exists():
+            shutil.copy2(src, dest_assets / name)
+
+    # Sprite manifest ------------------------------------------------------
+    sprite_dir = output_dir / "sprites"
+    sprite_dir.mkdir(parents=True, exist_ok=True)
+    sprite_png = dest_assets / "rastersymbols-day.png"
+    if sprite_png.exists():
+        shutil.copy2(sprite_png, sprite_dir / f"s52-{args.palette}.png")
+    sprites: dict[str, dict[str, int | bool]] = {}
+    for name, info in symbols.items():
+        if {"x", "y", "w", "h"} <= info.keys():
+            key = f"s52-{name}"
+            sprites[key] = {
+                "x": int(info["x"]),
+                "y": int(info["y"]),
+                "width": int(info["w"]),
+                "height": int(info["h"]),
+                "pixelRatio": 1,
+                "sdf": False,
+            }
+    sprite_json_path = sprite_dir / f"s52-{args.palette}.json"
+    with sprite_json_path.open("w", encoding="utf-8") as f:
+        json.dump(sprites, f, indent=2, sort_keys=True)
+
     style = {
         "version": 8,
-        "name": args.emit_name
-        or f"OpenCPN S-52 {args.palette.capitalize()}",
-        "sprite": args.sprite_base,
-        "glyphs": args.glyphs,
+        "name": args.emit_name or f"OpenCPN S-52 {args.palette.capitalize()}",
+        "sprite": f"/sprites/s52-{args.palette}",
+        "glyphs": "/glyphs/{fontstack}/{range}.pbf",
         "sources": {
-            args.source_name: {"type": "vector", "tiles": [args.tiles_url]}
+            "cm93-core": {"type": "vector", "url": "/tiles/cm93-core.json"},
+            "cm93-label": {"type": "vector", "url": "/tiles/cm93-label.json"},
         },
         "layers": layers,
         "metadata": {"maplibre:s52.palette": args.palette},
@@ -961,17 +1021,18 @@ def main() -> None:  # pragma: no cover - CLI wrapper
     # Basic validation ------------------------------------------------------
     if style.get("version") != 8:
         _fail("style.json must be version 8")
-    if args.source_name not in style["sources"]:
+    if "cm93-core" not in style["sources"]:
         _fail("Vector source missing from style")
     for lyr in style["layers"]:
         if "paint" not in lyr and "layout" not in lyr:
             _fail(f"Layer {lyr['id']} missing paint/layout")
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
+    style_path.parent.mkdir(parents=True, exist_ok=True)
     style_json = json.dumps(style, indent=2, sort_keys=True)
-    style_json = style_json.replace("{SPRITE_PREFIX}", args.sprite_prefix)
-    args.output.write_text(style_json)
-    print(f"Wrote style with {len(layers)} layers to {args.output}")
+    sprite_prefix = args.sprite_prefix if hasattr(args, "sprite_prefix") else "s52-"
+    style_json = style_json.replace("{SPRITE_PREFIX}", sprite_prefix)
+    style_path.write_text(style_json)
+    print(f"Wrote style with {len(layers)} layers to {style_path}")
 
 
 if __name__ == "__main__":

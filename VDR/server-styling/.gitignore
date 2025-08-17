@@ -10,3 +10,5 @@ dist/*.csv
 dist/*.CSV
 dist/coverage/
 dist/style.s52.*.json
+assets/*
+!assets/PROVENANCE.txt
