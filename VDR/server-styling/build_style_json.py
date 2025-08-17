@@ -24,6 +24,11 @@ from s52_xml import (
     parse_s57_catalogue,
 )
 
+# Auxiliary rule helpers
+from s52_rules.csp import decode as decode_csp
+from s52_rules.scamin import scamin_to_zoom, zoom_limits
+from s52_rules.lights import SYMBOL_BY_CATLIT
+
 
 def _lookup_priorities(lookups: List[Dict[str, str]]) -> Dict[str, int]:
     priorities: Dict[str, int] = {}
@@ -540,6 +545,12 @@ def build_layers(
                         ],
                     ],
                     "icon-size": 1.0,
+                    "symbol-sort-key": [
+                        "coalesce",
+                        ["get", "scamin"],
+                        ["get", "rank"],
+                        0,
+                    ],
                 },
                 "metadata": {"maplibre:s52": "UDWHAZ-SY(hazardIcon)"},
             },
@@ -577,8 +588,15 @@ def build_layers(
                         16,
                         13,
                     ],
+                    "symbol-sort-key": [
+                        "coalesce",
+                        ["get", "scamin"],
+                        ["get", "rank"],
+                        0,
+                    ],
                 },
-                "minzoom": 10,
+                "minzoom": zoom_limits(90000)[0],
+                "maxzoom": zoom_limits(90000)[1],
                 "paint": {
                     "text-color": [
                         "case",
@@ -701,6 +719,26 @@ def _light_label_expr() -> List[object]:
     ]
 
 
+def _light_symbol_expr() -> List[object]:
+    """Return expression selecting the light symbol based on ``CATLIT``."""
+    expr: List[object] = ["match", ["get", "CATLIT"]]
+    for code, sym in SYMBOL_BY_CATLIT.items():
+        expr.extend([code, sym])
+    expr.append("LIGHTS11")  # default symbol
+    return expr
+
+
+def _decode_cs_filters(instr: str) -> List[List[object]]:
+    """Extract CSP attribute filters from a lookup instruction string."""
+    filters: List[List[object]] = []
+    for match in re.finditer(r"CS\(([^)]+)\)", instr or ""):
+        token = match.group(1).split(";", 1)[0]
+        filt = decode_csp(token)
+        if filt:
+            filters.append(filt)
+    return filters
+
+
 def generate_layers_from_lookups(
     colors: Dict[str, str],
     lookups: List[Dict[str, object]],
@@ -722,12 +760,33 @@ def generate_layers_from_lookups(
         prio = priorities.get(objl, 50)
         metadata: Dict[str, object] = {"maplibre:s52": f"{objl}"}
         fallback: str | None = None
+        cs_filters = _decode_cs_filters(instr)
+        base_filter: List[object] = ["==", ["get", "OBJL"], objl]
+        filter_expr: List[object]
+        if cs_filters:
+            filter_expr = ["all", base_filter, *cs_filters]
+        else:
+            filter_expr = base_filter
 
         if geom == "point":
             sym_match = re.search(r"SY\(([A-Z0-9]+)\)", instr)
             sym = sym_match.group(1) if sym_match else None
             layout: Dict[str, object] = {"icon-allow-overlap": True}
-            if sym and sym in symbols:
+            if objl == "LIGHTS":
+                layout["icon-image"] = ["concat", "{SPRITE_PREFIX}", _light_symbol_expr()]
+                meta = symbols.get(sym or "LIGHTS11", {})
+                layout["icon-anchor"] = "center"
+                anchor = meta.get("anchor")
+                if anchor:
+                    ax, ay = anchor
+                    off_x = ax - meta.get("w", 0) / 2
+                    off_y = ay - meta.get("h", 0) / 2
+                    if off_x or off_y:
+                        layout["icon-offset"] = [off_x, off_y]
+                if meta.get("rotate"):
+                    layout["icon-rotate"] = ["coalesce", ["get", "ORIENT"], 0]
+                metadata["maplibre:s52"] = f"{objl}-SY({sym or 'LIGHTS11'})"
+            elif sym and sym in symbols:
                 meta = symbols[sym]
                 layout["icon-image"] = ["concat", "{SPRITE_PREFIX}", sym]
                 layout["icon-anchor"] = "center"
@@ -745,12 +804,13 @@ def generate_layers_from_lookups(
                 layout["icon-image"] = "marker-15"
                 fallback = "missingSymbol"
                 metadata["maplibre:s52"] = f"{objl}-stub"
+            layout["symbol-sort-key"] = ["coalesce", ["get", "scamin"], ["get", "rank"], 0]
             layer = {
                 "id": objl,
                 "type": "symbol",
                 "source": source,
                 "source-layer": source_layer,
-                "filter": ["==", ["get", "OBJL"], objl],
+                "filter": filter_expr,
                 "layout": layout,
                 "metadata": metadata,
             }
@@ -802,7 +862,7 @@ def generate_layers_from_lookups(
                 "type": "line",
                 "source": source,
                 "source-layer": source_layer,
-                "filter": ["==", ["get", "OBJL"], objl],
+                "filter": filter_expr,
                 "paint": paint,
                 "metadata": metadata,
             }
@@ -831,7 +891,7 @@ def generate_layers_from_lookups(
                 "type": "fill",
                 "source": source,
                 "source-layer": source_layer,
-                "filter": ["==", ["get", "OBJL"], objl],
+                "filter": filter_expr,
                 "paint": paint,
                 "metadata": metadata,
             }
@@ -888,90 +948,106 @@ def main() -> None:  # pragma: no cover - CLI wrapper
         )
     root = ET.parse(args.chartsymbols).getroot()
     palette_map = {"day": "DAY_BRIGHT", "dusk": "DUSK", "night": "NIGHT"}
-    colors = parse_palette_colors(root, palette_map[args.palette])
     lookups = parse_lookups(root)
     priorities = _lookup_priorities(lookups)
     symbols = parse_symbols(root)
     linestyles = parse_linestyles(root)
     patterns = parse_patterns(root)
 
-    layers = build_layers(
-        colors,
-        args.safety_contour,
-        args.source_name,
-        args.source_layer,
-        priorities,
-        symbols,
-        linestyles,
-        labels=args.labels,
-    )
+    if args.output.is_dir() or args.output.suffix == "":
+        out_dir = args.output
+        palettes = ["day", "dusk", "night"]
+    else:
+        out_dir = args.output.parent
+        palettes = [args.palette]
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    if args.auto_cover:
-        auto_layers = generate_layers_from_lookups(
+    for pal in palettes:
+        colors = parse_palette_colors(root, palette_map[pal])
+        layers = build_layers(
             colors,
-            lookups,
-            symbols,
-            linestyles,
-            patterns,
+            args.safety_contour,
             args.source_name,
             args.source_layer,
             priorities,
+            symbols,
+            linestyles,
             labels=args.labels,
         )
-        existing_ids = {lyr["id"] for lyr in layers}
-        for _, lyr in auto_layers:
-            if lyr["id"] not in existing_ids:
-                layers.append(lyr)
-                existing_ids.add(lyr["id"])
-        cat_path = args.s57_catalogue
-        if not cat_path:
-            default_cat = Path(__file__).resolve().parent / "dist" / "assets" / "s52" / "s57objectclasses.csv"
-            if default_cat.exists():
-                cat_path = default_cat
-        if cat_path and cat_path.exists():
-            catalogue = parse_s57_catalogue(cat_path)
-            for ign in ["$AREAS", "$LINES", "$TEXTS"]:
-                catalogue.pop(ign, None)
-            stub_layers = generate_stub_layers_from_catalog(
+
+        if args.auto_cover:
+            auto_layers = generate_layers_from_lookups(
                 colors,
-                catalogue,
-                {lu["objl"] for lu in lookups},
+                lookups,
+                symbols,
+                linestyles,
+                patterns,
                 args.source_name,
                 args.source_layer,
                 priorities,
+                labels=args.labels,
             )
-            for _, lyr in stub_layers:
+            existing_ids = {lyr["id"] for lyr in layers}
+            for _, lyr in auto_layers:
                 if lyr["id"] not in existing_ids:
                     layers.append(lyr)
                     existing_ids.add(lyr["id"])
+            cat_path = args.s57_catalogue
+            if not cat_path:
+                default_cat = (
+                    Path(__file__).resolve().parent
+                    / "dist"
+                    / "assets"
+                    / "s52"
+                    / "s57objectclasses.csv"
+                )
+                if default_cat.exists():
+                    cat_path = default_cat
+            if cat_path and cat_path.exists():
+                catalogue = parse_s57_catalogue(cat_path)
+                for ign in ["$AREAS", "$LINES", "$TEXTS"]:
+                    catalogue.pop(ign, None)
+                stub_layers = generate_stub_layers_from_catalog(
+                    colors,
+                    catalogue,
+                    {lu["objl"] for lu in lookups},
+                    args.source_name,
+                    args.source_layer,
+                    priorities,
+                )
+                for _, lyr in stub_layers:
+                    if lyr["id"] not in existing_ids:
+                        layers.append(lyr)
+                        existing_ids.add(lyr["id"])
 
-    style = {
-        "version": 8,
-        "name": args.emit_name
-        or f"OpenCPN S-52 {args.palette.capitalize()}",
-        "sprite": args.sprite_base,
-        "glyphs": args.glyphs,
-        "sources": {
-            args.source_name: {"type": "vector", "tiles": [args.tiles_url]}
-        },
-        "layers": layers,
-        "metadata": {"maplibre:s52.palette": args.palette},
-    }
+        style = {
+            "version": 8,
+            "name": args.emit_name or f"OpenCPN S-52 {pal.capitalize()}",
+            "sprite": args.sprite_base,
+            "glyphs": args.glyphs,
+            "sources": {
+                args.source_name: {"type": "vector", "tiles": [args.tiles_url]}
+            },
+            "layers": layers,
+            "metadata": {"maplibre:s52.palette": pal},
+        }
 
-    # Basic validation ------------------------------------------------------
-    if style.get("version") != 8:
-        _fail("style.json must be version 8")
-    if args.source_name not in style["sources"]:
-        _fail("Vector source missing from style")
-    for lyr in style["layers"]:
-        if "paint" not in lyr and "layout" not in lyr:
-            _fail(f"Layer {lyr['id']} missing paint/layout")
+        if style.get("version") != 8:
+            _fail("style.json must be version 8")
+        if args.source_name not in style["sources"]:
+            _fail("Vector source missing from style")
+        for lyr in style["layers"]:
+            if "paint" not in lyr and "layout" not in lyr:
+                _fail(f"Layer {lyr['id']} missing paint/layout")
 
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    style_json = json.dumps(style, indent=2, sort_keys=True)
-    style_json = style_json.replace("{SPRITE_PREFIX}", args.sprite_prefix)
-    args.output.write_text(style_json)
-    print(f"Wrote style with {len(layers)} layers to {args.output}")
+        if args.output.is_dir() or args.output.suffix == "":
+            out_path = out_dir / f"style.s52.{pal}.json"
+        else:
+            out_path = args.output
+        style_json = json.dumps(style, indent=2, sort_keys=True)
+        style_json = style_json.replace("{SPRITE_PREFIX}", args.sprite_prefix)
+        out_path.write_text(style_json)
+        print(f"Wrote style with {len(layers)} layers to {out_path}")
 
 
 if __name__ == "__main__":

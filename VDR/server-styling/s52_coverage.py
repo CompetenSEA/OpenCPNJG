@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Set
@@ -14,6 +15,7 @@ from s52_xml import (
     parse_lookups,
     parse_s57_catalogue,
 )
+from s52_rules.csp import decode as decode_csp
 
 
 def parse_args() -> argparse.Namespace:
@@ -150,6 +152,25 @@ def main() -> None:  # pragma: no cover - CLI helper
         print(f"  delta covered: +{len(newly)}")
         if newly:
             print("  newly covered: " + ", ".join(newly[:20]))
+    # CSP mapping coverage -----------------------------------------------
+    csp_tokens: Set[str] = set()
+    for lu in lookups:
+        instr = lu.get("instruction", "") or ""
+        for m in re.finditer(r"CS\(([^)]+)\)", instr):
+            token = m.group(1).split(";", 1)[0].strip()
+            if token:
+                csp_tokens.add(token)
+    mapped = {tok for tok in csp_tokens if decode_csp(tok)}
+    csp_report = {
+        "total": len(csp_tokens),
+        "mapped": len(mapped),
+        "coverage": (len(mapped) / len(csp_tokens)) if csp_tokens else 0.0,
+        "unmapped": sorted(csp_tokens - mapped),
+    }
+    (coverage_dir / "csp_coverage.json").write_text(
+        json.dumps(csp_report, indent=2, sort_keys=True)
+    )
+    print(f"CSP mapping coverage: {csp_report['coverage']:.0%}")
 
     # S-57 catalogue coverage ---------------------------------------------
     s57_csv = base / "dist" / "assets" / "s52" / "s57objectclasses.csv"
