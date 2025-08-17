@@ -39,6 +39,25 @@ def import_s57(
     return out
 
 
+def import_dir(src: Path, *, kind: str = "enc") -> tuple[Path, Path]:
+    """Import all S-57 cells found in ``src``.
+
+    Each chart cell in ``src`` is encoded to MBTiles using :func:`import_s57`
+    and placed into ``ENC_DIR``.  The return value mirrors the legacy
+    interface expected by callers: a tuple of the destination directory and the
+    original source directory.
+    """
+
+    src = Path(src)
+    out_dir = Path(ENC_DIR)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for cell in sorted(src.glob("*.000")):
+        import_s57(cell)
+
+    return out_dir, src
+
+
 def main(argv: list[str] | None = None) -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--src", type=Path, required=True)
