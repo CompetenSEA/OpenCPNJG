@@ -50,6 +50,14 @@ Pragmas: `journal_mode=WAL`, `synchronous=NORMAL`, `busy_timeout=5000`. Backup v
 ## Backup/restore
 Use the `.backup` command above; restore by copying the backup over `registry.sqlite`.
 
+## Database migrations
+The CM93 tiler stores features in a PostGIS database. Apply migration scripts in
+`migrations/` to initialize or upgrade the schema:
+
+```
+psql $DATABASE_URL -v ON_ERROR_STOP=1 -f migrations/001_cm93_init.sql
+```
+
 ## Tests
 ```
 pytest VDR/chart-tiler/tests/test_convert_geotiff.py
