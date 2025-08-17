@@ -37,8 +37,35 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from typing import Iterable, Tuple
+import subprocess
 
 import charts_py
+
+
+def _is_cog(path: Path) -> bool:
+    """Return ``True`` if *path* points to a Cloud Optimized GeoTIFF."""
+
+    try:
+        proc = subprocess.run(
+            ["gdalinfo", str(path)], capture_output=True, text=True, check=True
+        )
+    except Exception:
+        return False
+    return "Cloud Optimized GeoTIFF" in proc.stdout
+
+
+def ensure_cog(path: Path) -> Path:
+    """Ensure *path* is a COG, converting it if necessary.
+
+    If *path* is not already a Cloud Optimized GeoTIFF it is converted using
+    ``gdal_translate -of COG`` and the converted file path is returned.
+    """
+
+    if _is_cog(path):
+        return path
+    out = path.with_suffix(".cog.tif")
+    subprocess.run(["gdal_translate", "-of", "COG", str(path), str(out)], check=True)
+    return out
 
 
 def _create_schema(cur: sqlite3.Cursor) -> None:
