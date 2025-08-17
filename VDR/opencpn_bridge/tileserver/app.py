@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import importlib
 import time
-from typing import Any, Dict, List
+from typing import Any
 
 from fastapi import FastAPI, HTTPException, Response
 
@@ -32,7 +32,7 @@ except Exception:  # pragma: no cover - dependency missing
 # ``list_datasets`` lives in the chart registry package which may not be
 # available in all environments (e.g. unit tests), so import lazily.
 try:  # pragma: no cover - optional dependency
-    from registry import list_datasets as _list_datasets  # type: ignore
+    from ..registry import list_datasets as _list_datasets
 except Exception:  # pragma: no cover - optional dependency missing
     _list_datasets = None
 
