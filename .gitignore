@@ -39,3 +39,6 @@ glyphs/
 opencpn_bridge/dist/assets/s52/*
 !opencpn_bridge/dist/assets/s52/assets.manifest.json
 !opencpn_bridge/dist/assets/s52/PROVENANCE.txt
+VDR/opencpn_bridge/dist/assets/s52/*
+!VDR/opencpn_bridge/dist/assets/s52/assets.manifest.json
+!VDR/opencpn_bridge/dist/assets/s52/PROVENANCE.txt
