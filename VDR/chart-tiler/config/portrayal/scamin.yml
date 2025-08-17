@@ -1,0 +1,21 @@
+LNDARE:
+  zmin: 0
+  zmax: 16
+DEPARE:
+  zmin: 0
+  zmax: 16
+DEPCNT:
+  zmin: 9
+  zmax: 16
+COALNE:
+  zmin: 0
+  zmax: 16
+SOUNDG:
+  zmin: 10
+  zmax: 16
+WRECKS:
+  zmin: 12
+  zmax: 16
+OBSTRN:
+  zmin: 12
+  zmax: 16
