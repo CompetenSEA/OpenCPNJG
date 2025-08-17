@@ -1,5 +1,10 @@
 # API Contracts
 
+
+The bridge exposes a minimal set of native functions and a small HTTP
+service for development.
+
+## Python bindings
 The bridge aims to serve tiles over HTTP and through a small CLI.  Stub
 functions provide the core operations:
 The Python package exposes these entry points:
@@ -12,12 +17,10 @@ from opencpn_bridge import build_senc, query_tile_mvt
 ```python
 def build_senc(path: str) -> str:
     """Create a SENC and return a handle used by the tileserver."""
-    ...
 
 
-def query_tile_mvt(handle: str, z: int, x: int, y: int) -> bytes:
-    """Return an MVT tile for the given chart handle."""
-    ...
+def query_features(handle: str, bbox: tuple[float, float, float, float], scale: float) -> dict:
+    """Return features intersecting the bounding box."""
 ```
 
 Helper utilities for bounding boxes:
@@ -33,8 +36,10 @@ def bbox_to_xyz(z: int, west: float, south: float, east: float, north: float) ->
 
 Proposed tile endpoints:
 
-- `POST /v1/charts` – runs `build_senc` and stages the result in the registry.
-- `GET /tiles/{handle}/{z}/{x}/{y}.mvt` – calls `query_tile_mvt`.
+- `GET /tiles/{z}/{x}/{y}.png` – return a 256×256 PNG tile using the
+  standard XYZ scheme (Web Mercator, origin top‑left).
+- `GET /metrics` – Prometheus metrics for tile renders and byte counts.
 
-The CLI wraps these calls and defaults to the staging tileserver.  Once tiles
-look correct they can be pushed to the registry and served from production.
+The CLI wraps the bindings and defaults to local staging services.  Once
+tiles look correct they can be pushed to the registry and served from
+production.
