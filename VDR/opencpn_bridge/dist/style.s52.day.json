@@ -1,0 +1,10 @@
+{
+  "1": {"name": "LNDARE", "type": "fill", "color": "#e5e5e5"},
+  "2": {"name": "DEPARE", "type": "fill", "color": "#a6cee3"},
+  "3": {"name": "DEPCNT", "type": "line", "color": "#1f78b4"},
+  "4": {"name": "COALNE", "type": "line", "color": "#b2df8a"},
+  "5": {"name": "SOUNDG", "type": "symbol", "color": "#33a02c"},
+  "6": {"name": "WRECKS", "type": "symbol", "color": "#fb9a99"},
+  "7": {"name": "OBSTRN", "type": "symbol", "color": "#e31a1c"},
+  "8": {"name": "LIGHTS", "type": "symbol", "color": "#fdbf6f"}
+}
