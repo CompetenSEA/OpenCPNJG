@@ -1,0 +1,43 @@
+name: vdr-assets
+
+on:
+  push:
+    paths:
+      - 'VDR/server-styling/**'
+      - '.github/workflows/vdr-assets.yml'
+  pull_request:
+    paths:
+      - 'VDR/server-styling/**'
+      - '.github/workflows/vdr-assets.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+      - name: Sync OpenCPN assets
+        run: |
+          python VDR/server-styling/sync_opencpn_assets.py \
+            --lock VDR/server-styling/opencpn-assets.lock \
+            --dest VDR/server-styling/dist/assets/s52 \
+            --force
+      - name: Check provenance
+        run: |
+          commit=$(grep '^commit=' VDR/server-styling/opencpn-assets.lock | cut -d= -f2)
+          grep "$commit" VDR/server-styling/assets/PROVENANCE.txt
+      - name: Build sprites and styles
+        run: |
+          python VDR/server-styling/generate_sprite_json.py \
+            --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml \
+            --output VDR/server-styling/dist/sprite.json
+          python VDR/server-styling/build_style_json.py \
+            --chartsymbols VDR/server-styling/dist/assets/s52/chartsymbols.xml \
+            --tiles-url http://example/tiles \
+            --source-name opencpn \
+            --source-layer s57 \
+            --sprite-base http://example/sprite \
+            --glyphs http://example/glyphs/{fontstack}/{range}.pbf \
+            --output VDR/server-styling/dist/style.json

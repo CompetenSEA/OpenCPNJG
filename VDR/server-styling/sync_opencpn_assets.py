@@ -67,6 +67,25 @@ def _copy_required(src_dir: Path, dest_dir: Path) -> dict[str, dict[str, int | s
     return manifest
 
 
+def _ensure_commit_exists(repo: str, commit: str) -> None:
+    """Raise ``SystemExit`` if ``commit`` is missing from ``repo``."""
+
+    res = subprocess.run(
+        ["git", "ls-remote", repo, commit], capture_output=True, text=True
+    )
+    if res.returncode != 0 or commit not in res.stdout:
+        raise SystemExit(f"Commit {commit} not found in {repo}")
+
+
+def _write_lock(
+    lock_path: Path, repo: str, repo_path: str, commit: str, manifest: dict[str, dict[str, int | str]]
+) -> None:
+    lines = [f"repo={repo}", f"path={repo_path}", f"commit={commit}", "", "[manifest]"]
+    for name in sorted(manifest):
+        lines.append(f"{name}={manifest[name]['sha256']}")
+    lock_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def main() -> None:  # pragma: no cover - thin CLI wrapper
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--lock", type=Path, required=True, help="Path to lock file")
@@ -88,6 +107,11 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
 
     args.dest.mkdir(parents=True, exist_ok=True)
 
+    lock = _parse_lock(args.lock)
+    repo = lock["repo"]
+    repo_path = lock["path"].strip("/")
+    commit = lock["commit"]
+
     if args.local_src:
         src_base = args.local_src
         if not src_base.exists():
@@ -102,11 +126,7 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
                 "--dest VDR/server-styling/dist/assets/s52 --force'"
             )
     else:
-        lock = _parse_lock(args.lock)
-        repo = lock["repo"]
-        repo_path = lock["path"].strip("/")
-        commit = lock["commit"]
-
+        _ensure_commit_exists(repo, commit)
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             subprocess.run(["git", "init", tmpdir], check=True, stdout=subprocess.DEVNULL)
@@ -143,6 +163,8 @@ def main() -> None:  # pragma: no cover - thin CLI wrapper
     manifest_path = args.dest / "assets.manifest.json"
     manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True))
     print(f"Wrote manifest with {len(manifest)} entries to {manifest_path}")
+
+    _write_lock(args.lock, repo, repo_path, commit, manifest)
 
 
 if __name__ == "__main__":
