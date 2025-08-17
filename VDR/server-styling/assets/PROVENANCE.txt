@@ -1,0 +1,17 @@
+OpenCPN S-52/S-57 assets provenance
+===================================
+
+Source repository: https://github.com/OpenCPN/OpenCPN
+Path: data/s57data
+Commit: 81ec5a47adb837b9c97be843db89b30d13393777
+
+The following files are copied verbatim from the above commit:
+  - chartsymbols.xml
+  - rastersymbols-day.png
+  - S52RAZDS.RLE
+  - s57objectclasses.csv
+  - s57attributes.csv
+  - attdecode.csv
+
+These assets are distributed under the terms of the GNU General Public License
+version 2 or later, matching the licensing of the OpenCPN project.
