@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { createMapAPI } from './AppMap';
+import { fetchCharts } from '../features/charts';
 
 export interface Chart {
   id: string;
@@ -15,8 +16,7 @@ export const BasePicker = ({ api }: Props) => {
   const [charts, setCharts] = useState<Chart[]>([]);
   const [base, setBase] = useState<'osm' | 'geotiff' | 'enc'>('enc');
   useEffect(() => {
-    fetch('/charts')
-      .then((r) => r.json())
+    fetchCharts()
       .then((data) => {
         const items: Chart[] = [];
         if (data.enc?.datasets) {
@@ -47,8 +47,7 @@ export const BasePicker = ({ api }: Props) => {
 export function createBasePickerAPI(api: ReturnType<typeof createMapAPI>) {
   return {
     async load(): Promise<Chart[]> {
-      const resp = await fetch('/charts');
-      const data = await resp.json();
+      const data = await fetchCharts();
       const items: Chart[] = [];
       if (data.enc?.datasets) {
         items.push(...data.enc.datasets.map((d: any) => ({ id: d.id, kind: 'enc', name: d.title })));
