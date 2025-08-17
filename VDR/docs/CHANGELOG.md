@@ -14,3 +14,5 @@
   mariner parameters applied via style expressions instead of URL
   parameters. Added UI toggles for label plane visibility and palette
   selection.
+- Exposed Prometheus metrics for tile latency and size and added CI
+  performance-gate tests enforcing latency and payload budgets.
