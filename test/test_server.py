@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 
 
-import dbus
-import dbus.service
-import dbus.mainloop.glib
-
 import sys
 import threading
 import time
 
-from gi.repository import GObject as gobject
-from gi.repository import GLib
+import pytest
+
+dbus = pytest.importorskip("dbus")
+pytest.importorskip("dbus.mainloop.glib")
+pytest.importorskip("gi")
+
+import dbus.service  # type: ignore  # noqa: E402
+import dbus.mainloop.glib  # type: ignore  # noqa: E402
+from gi.repository import GObject as gobject, GLib  # type: ignore  # noqa: E402
 
 def sleep_and_exit(main_loop):
     time.sleep(50/1000)

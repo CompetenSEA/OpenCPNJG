@@ -289,6 +289,7 @@ def _serve_mbtiles(
         "X-Tile-Cache": cache_state,
         "Cache-Control": "public, max-age=60",
         "ETag": etag,
+        "Vary": "Accept-Encoding",
     }
     if cached is not None:
         return Response(content=cached, media_type="application/x-protobuf", headers=headers)
@@ -342,48 +343,35 @@ def tiles(
     cfg = _cfg_from_params(sc, safety, shallow, deep)
     key = _cache_key(fmt, cfg, z, x, y, "")
     cached = _get_from_redis(key)
-    cache_state = "hit" if cached is not None else "miss"
     if cached is not None:
-        media = "image/png" if fmt == "png" else "application/x-protobuf"
-        duration_ms = (time.perf_counter() - start) * 1000
-        logger.info(
-            "fmt=%s sc=%s z=%d x=%d y=%d cache=%s ms=%.2f",
-            fmt,
-            cfg.safety,
-            z,
-            x,
-            y,
-            cache_state,
-            duration_ms,
-        )
-        headers = {"X-Tile-Cache": cache_state}
-        if media.startswith("image/"):
-            headers["Cache-Control"] = "public, max-age=60"
-        return Response(content=cached, media_type=media, headers=headers)
-
-    if fmt == "png-mvp" or (fmt == "png" and os.environ.get("RASTER_MVP") == "1"):
-        before = _render_png_mvp.cache_info().hits
-        try:
-            data = _render_png_mvp(cfg, z, x, y)
-        except RasterMVPUnavailable:
-            data = PNG_1X1
-        after = _render_png_mvp.cache_info().hits
-        media_type = "image/png"
-    elif fmt == "png":
-        before = _render_png.cache_info().hits
-        data = _render_png(cfg, z, x, y)
-        after = _render_png.cache_info().hits
-        media_type = "image/png"
-    else:
-        before = _render_mvt.cache_info().hits
-        data = _render_mvt(cfg, z, x, y)
-        after = _render_mvt.cache_info().hits
-        media_type = "application/x-protobuf"
-    if after > before:
+        data = cached
         cache_state = "hit"
-        _cache_hits.inc()
+        media_type = "image/png" if fmt == "png" else "application/x-protobuf"
+    else:
+        cache_state = "miss"
+        if fmt == "png-mvp" or (fmt == "png" and os.environ.get("RASTER_MVP") == "1"):
+            before = _render_png_mvp.cache_info().hits
+            try:
+                data = _render_png_mvp(cfg, z, x, y)
+            except RasterMVPUnavailable:
+                data = PNG_1X1
+            after = _render_png_mvp.cache_info().hits
+            media_type = "image/png"
+        elif fmt == "png":
+            before = _render_png.cache_info().hits
+            data = _render_png(cfg, z, x, y)
+            after = _render_png.cache_info().hits
+            media_type = "image/png"
+        else:
+            before = _render_mvt.cache_info().hits
+            data = _render_mvt(cfg, z, x, y)
+            after = _render_mvt.cache_info().hits
+            media_type = "application/x-protobuf"
+        if after > before:
+            cache_state = "hit"
+            _cache_hits.inc()
+        _set_redis(key, data)
 
-    _set_redis(key, data)
     duration_ms = (time.perf_counter() - start) * 1000
     logger.info(
         "fmt=%s sc=%s z=%d x=%d y=%d cache=%s ms=%.2f",
@@ -395,9 +383,13 @@ def tiles(
         cache_state,
         duration_ms,
     )
-    headers = {"X-Tile-Cache": cache_state}
-    if media_type.startswith("image/"):
-        headers["Cache-Control"] = "public, max-age=60"
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "X-Tile-Cache": cache_state,
+        "Cache-Control": "public, max-age=60",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
     return Response(content=data, media_type=media_type, headers=headers)
 
 
@@ -498,7 +490,11 @@ def style() -> Response:
     path = STYLING_DIST / "style.s52.day.json"
     data = path.read_bytes()
     etag = hashlib.sha1(data).hexdigest()
-    headers = {"ETag": etag, "Cache-Control": "public, max-age=3600"}
+    headers = {
+        "ETag": etag,
+        "Cache-Control": "public, max-age=3600",
+        "Vary": "Accept-Encoding",
+    }
     return Response(data, media_type="application/json", headers=headers)
 
 
@@ -507,7 +503,11 @@ def style_dusk() -> Response:
     path = STYLING_DIST / "style.s52.dusk.json"
     data = path.read_bytes()
     etag = hashlib.sha1(data).hexdigest()
-    headers = {"ETag": etag, "Cache-Control": "public, max-age=3600"}
+    headers = {
+        "ETag": etag,
+        "Cache-Control": "public, max-age=3600",
+        "Vary": "Accept-Encoding",
+    }
     return Response(data, media_type="application/json", headers=headers)
 
 
@@ -516,7 +516,11 @@ def style_night() -> Response:
     path = STYLING_DIST / "style.s52.night.json"
     data = path.read_bytes()
     etag = hashlib.sha1(data).hexdigest()
-    headers = {"ETag": etag, "Cache-Control": "public, max-age=3600"}
+    headers = {
+        "ETag": etag,
+        "Cache-Control": "public, max-age=3600",
+        "Vary": "Accept-Encoding",
+    }
     return Response(data, media_type="application/json", headers=headers)
 
 
@@ -525,7 +529,11 @@ def sprite_json() -> Response:
     path = STYLING_DIST / "sprites" / "s52-day.json"
     data = path.read_bytes()
     etag = hashlib.sha1(data).hexdigest()
-    headers = {"ETag": etag, "Cache-Control": "public, max-age=3600"}
+    headers = {
+        "ETag": etag,
+        "Cache-Control": "public, max-age=3600",
+        "Vary": "Accept-Encoding",
+    }
     return Response(data, media_type="application/json", headers=headers)
 
 
@@ -534,8 +542,27 @@ def sprite_png() -> Response:
     path = STYLING_DIST / "assets" / "s52" / "rastersymbols-day.png"
     data = path.read_bytes()
     etag = hashlib.sha1(data).hexdigest()
-    headers = {"ETag": etag, "Cache-Control": "public, max-age=3600"}
+    headers = {
+        "ETag": etag,
+        "Cache-Control": "public, max-age=3600",
+        "Vary": "Accept-Encoding",
+    }
     return Response(data, media_type="image/png", headers=headers)
+
+
+@app.get("/glyphs/{fontstack}/{rng}.pbf")
+def glyph_pbf(fontstack: str, rng: str) -> Response:
+    path = STYLING_DIST / "glyphs" / f"{rng}.pbf"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="glyph range not found")
+    data = path.read_bytes()
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "ETag": etag,
+        "Cache-Control": "public, max-age=3600",
+        "Vary": "Accept-Encoding",
+    }
+    return Response(data, media_type="application/x-protobuf", headers=headers)
 
 
 @app.get("/metrics")
@@ -691,7 +718,13 @@ def titiler_tiles(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Respons
         raise HTTPException(status_code=415, detail="unsupported format")
     data = _render_geotiff(cid, z, x, y, fmt)
     media = "image/webp" if fmt == "webp" else "image/png"
-    return Response(data, media_type=media, headers={"Cache-Control": "public, max-age=60"})
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "Cache-Control": "public, max-age=60",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
+    return Response(data, media_type=media, headers=headers)
 
 
 @app.get("/tiles/geotiff/{cid}/{z}/{x}/{y}.{fmt}")
@@ -705,20 +738,31 @@ def tiles_geotiff(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Respons
     if cached is not None:
         _geo_cache.move_to_end(key)
         _geo_hits.inc()
-        return Response(cached, media_type=media, headers={"X-Tile-Cache": "hit", "Cache-Control": "public, max-age=60"})
-    try:
-        data = _render_geotiff(cid, z, x, y, fmt)
-    except Exception:
-        _geo_errors.inc()
-        cached = _geo_cache.get(key)
-        if cached is not None:
-            return Response(cached, media_type=media, headers={"X-Tile-Cache": "stale", "Cache-Control": "public, max-age=60"})
-        raise HTTPException(status_code=502, detail="render error")
-    _geo_cache[key] = data
-    _geo_cache.move_to_end(key)
-    if len(_geo_cache) > _GEO_CACHE_SIZE:
-        _geo_cache.popitem(last=False)
-    return Response(data, media_type=media, headers={"X-Tile-Cache": "miss", "Cache-Control": "public, max-age=60"})
+        data = cached
+        cache_state = "hit"
+    else:
+        try:
+            data = _render_geotiff(cid, z, x, y, fmt)
+            cache_state = "miss"
+            _geo_cache[key] = data
+            _geo_cache.move_to_end(key)
+            if len(_geo_cache) > _GEO_CACHE_SIZE:
+                _geo_cache.popitem(last=False)
+        except Exception:
+            _geo_errors.inc()
+            cached = _geo_cache.get(key)
+            if cached is None:
+                raise HTTPException(status_code=502, detail="render error")
+            data = cached
+            cache_state = "stale"
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "X-Tile-Cache": cache_state,
+        "Cache-Control": "public, max-age=60",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
+    return Response(data, media_type=media, headers=headers)
 
 
 # --- CM93 vector tiles ------------------------------------------------------
@@ -727,13 +771,25 @@ def tiles_geotiff(cid: str, z: int, x: int, y: int, fmt: str = "png") -> Respons
 @app.get("/tiles/cm93-core/{z}/{x}/{y}.pbf")
 def tiles_cm93_core(z: int, x: int, y: int) -> Response:
     data = _render_mvt(DEFAULT_CONFIG, z, x, y)
-    return Response(data, media_type="application/x-protobuf", headers={"Cache-Control": "public, max-age=60"})
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "Cache-Control": "public, max-age=60",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
+    return Response(data, media_type="application/x-protobuf", headers=headers)
 
 
 @app.get("/tiles/cm93-label/{z}/{x}/{y}.pbf")
 def tiles_cm93_label(z: int, x: int, y: int) -> Response:
     data = _render_mvt(DEFAULT_CONFIG, z, x, y)
-    return Response(data, media_type="application/x-protobuf", headers={"Cache-Control": "public, max-age=60"})
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "Cache-Control": "public, max-age=60",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
+    return Response(data, media_type="application/x-protobuf", headers=headers)
 
 
 @app.get("/tiles/cm93/dict.json")
@@ -741,14 +797,39 @@ def tiles_cm93_dict() -> Response:
     path = STYLING_DIST / "dict.json"
     if not path.exists():
         raise HTTPException(status_code=404, detail="dict missing")
-    return Response(path.read_text(), media_type="application/json")
+    data = path.read_bytes()
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "Cache-Control": "public, max-age=3600",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
+    return Response(data, media_type="application/json", headers=headers)
 
 
 @app.get("/tiles/cm93-core.json")
-def tiles_cm93_core_tilejson() -> Dict[str, Any]:
-    return {"tiles": ["/tiles/cm93-core/{z}/{x}/{y}.pbf"], "minzoom": 0, "maxzoom": 16}
+def tiles_cm93_core_tilejson() -> Response:
+    data = json.dumps(
+        {"tiles": ["/tiles/cm93-core/{z}/{x}/{y}.pbf"], "minzoom": 0, "maxzoom": 16}
+    ).encode("utf-8")
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "Cache-Control": "public, max-age=3600",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
+    return Response(data, media_type="application/json", headers=headers)
 
 
 @app.get("/tiles/cm93-label.json")
-def tiles_cm93_label_tilejson() -> Dict[str, Any]:
-    return {"tiles": ["/tiles/cm93-label/{z}/{x}/{y}.pbf"], "minzoom": 0, "maxzoom": 16}
+def tiles_cm93_label_tilejson() -> Response:
+    data = json.dumps(
+        {"tiles": ["/tiles/cm93-label/{z}/{x}/{y}.pbf"], "minzoom": 0, "maxzoom": 16}
+    ).encode("utf-8")
+    etag = hashlib.sha1(data).hexdigest()
+    headers = {
+        "Cache-Control": "public, max-age=3600",
+        "ETag": etag,
+        "Vary": "Accept-Encoding",
+    }
+    return Response(data, media_type="application/json", headers=headers)
