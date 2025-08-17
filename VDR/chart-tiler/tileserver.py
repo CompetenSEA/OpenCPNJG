@@ -52,6 +52,8 @@ from datasource_stub import features_for_tile
 from mvt_builder import encode_mvt
 from s52_preclass import S52PreClassifier, ContourConfig
 from cm93_rules import apply_scamin
+from lights import build_light_sectors, build_light_character
+from shapely.geometry import Point, mapping
 try:  # pragma: no cover - optional pillow
     from raster_mvp import render_tile as render_raster, RasterMVPUnavailable
 except Exception:  # pragma: no cover
@@ -172,6 +174,22 @@ def _render_mvt(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
     for feat in features_for_tile(bbox, z, x, y):
         props = dict(feat.get("properties", {}))
         objl = props.get("OBJL", "")
+        if objl == "LIGHTS":
+            if not apply_scamin(objl, z):
+                continue
+            sector = build_light_sectors(Point(feat["geometry"]["coordinates"]), props)
+            if sector.geom_type == "MultiPolygon":
+                exterior = list(sector.geoms[0].exterior.coords)[:2]
+                geom = {"type": "LineString", "coordinates": exterior}
+            else:
+                geom = json.loads(json.dumps(mapping(sector)))
+            feats.append({"geometry": geom, "properties": {"OBJL": "LIGHTS"}, "id": len(feats) + 1})
+            code = build_light_character(props)
+            feats.append({
+                "geometry": feat["geometry"],
+                "properties": {"OBJL": "LIGHTS", "text": code},
+            })
+            continue
         if not apply_scamin(objl, z):
             continue
         props.update(classifier.classify(objl, props))

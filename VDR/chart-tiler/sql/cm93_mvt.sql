@@ -14,12 +14,16 @@ RETURNS bytea AS $$
     ),
     lightgeom AS (
         SELECT ST_AsMVTGeom(
-                   ST_SimplifyPreserveTopology(ST_Intersection(l.geom, bounds.geom),
-                                              CASE WHEN z < 14 THEN 50 ELSE 10 END,
-                                              true),
+                   ST_SimplifyPreserveTopology(
+                       ST_Intersection(s.geom, bounds.geom),
+                       CASE WHEN z < 14 THEN 50 ELSE 10 END,
+                       true
+                   ),
                    bounds.geom, 4096, 64, true) AS geom,
                'LIGHTS' AS objl
-        FROM cm93_lights l, bounds
+        FROM cm93_lights l
+        JOIN LATERAL build_light_sectors(l.pt, l.attrs) AS s(geom) ON true,
+             bounds
         WHERE z >= 12
     ),
     allgeom AS (
@@ -45,7 +49,7 @@ RETURNS bytea AS $$
     lightlabels AS (
         SELECT ST_AsMVTGeom(ST_Intersection(l.pt, bounds.geom), bounds.geom, 4096, 64, true) AS geom,
                'LIGHTS' AS objl,
-               l.character AS text
+               build_light_character(l.attrs) AS text
         FROM cm93_lights l, bounds
         WHERE z >= 12
     ),

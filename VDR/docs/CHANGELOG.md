@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- ECDIS-grade light sectors now feed both core geometry and CRC32-coded labels.
 - Documented LIGHTS sector and label rules in `mvt_schema.md`.
 - SQL path now emits light sector geometries in `cm93-core` and
   dictionary-coded characters in `cm93-label` for `z ≥ 12`.
