@@ -38,6 +38,7 @@ class ChartRecord:
     scale_min: Optional[int] = None
     scale_max: Optional[int] = None
     senc_path: Optional[str] = None
+    provenance_path: Optional[str] = None
 
 
 class Registry:
@@ -65,7 +66,8 @@ class Registry:
                 tags TEXT,
                 scale_min INTEGER,
                 scale_max INTEGER,
-                senc_path TEXT
+                senc_path TEXT,
+                provenance_path TEXT
             )
             """
         )
@@ -112,28 +114,31 @@ class Registry:
         )
         self.conn.commit()
 
-    def register_senc(self, meta_path: Path, senc_path: Path) -> None:
+    def register_senc(self, meta_path: Path, senc_path: Path, provenance_path: Path | None = None) -> None:
         info = json.loads(Path(meta_path).read_text())
         rid = senc_path.stem
         bbox = info.get("bbox", [0, 0, 0, 0])
         scale_min = int(info.get("scale_min", 0))
         scale_max = int(info.get("scale_max", 0))
+        minzoom = int(info.get("minzoom", 0))
+        maxzoom = int(info.get("maxzoom", 0))
         name = info.get("name", rid)
         ts = time.time()
         cur = self.conn.cursor()
         cur.execute(
-            "REPLACE INTO charts (id,kind,name,bbox,minzoom,maxzoom,updated_at,scale_min,scale_max,senc_path) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            "REPLACE INTO charts (id,kind,name,bbox,minzoom,maxzoom,updated_at,scale_min,scale_max,senc_path,provenance_path) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
             (
                 rid,
                 "senc",
                 name,
                 json.dumps(bbox),
-                0,
-                0,
+                minzoom,
+                maxzoom,
                 ts,
                 scale_min,
                 scale_max,
                 str(senc_path),
+                str(provenance_path) if provenance_path else None,
             ),
         )
         self.conn.commit()
@@ -156,8 +161,9 @@ class Registry:
             for senc_meta in p.rglob("*.senc.json"):
                 base = senc_meta.name.replace(".senc.json", "")
                 senc = senc_meta.with_name(f"{base}.senc")
+                prov = senc_meta.with_name(f"{base}.provenance.json")
                 if senc.exists():
-                    self.register_senc(senc_meta, senc)
+                    self.register_senc(senc_meta, senc, prov if prov.exists() else None)
             for mb in p.rglob("*.mbtiles"):
                 if mb.with_suffix(".meta.json").exists():
                     continue
@@ -199,7 +205,7 @@ class Registry:
             return
         cur = self.conn.cursor()
         rows = cur.execute(
-            "SELECT id,kind,name,bbox,minzoom,maxzoom,updated_at,path,url,tags,scale_min,scale_max,senc_path FROM charts ORDER BY updated_at DESC"
+            "SELECT id,kind,name,bbox,minzoom,maxzoom,updated_at,path,url,tags,scale_min,scale_max,senc_path,provenance_path FROM charts ORDER BY updated_at DESC"
         ).fetchall()
         self._cache = [
             ChartRecord(
@@ -216,6 +222,7 @@ class Registry:
                 scale_min=row[10],
                 scale_max=row[11],
                 senc_path=row[12],
+                provenance_path=row[13],
             )
             for row in rows
         ]

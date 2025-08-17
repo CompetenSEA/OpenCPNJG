@@ -746,21 +746,27 @@ def _serialize(rec: ChartRecord) -> Dict[str, Any]:
         "path": rec.path,
         "url": rec.url,
         "tags": rec.tags or [],
+        "senc_path": rec.senc_path,
+        "provenance_path": rec.provenance_path,
     }
 
 
 @app.get("/charts")
 def charts_summary() -> Dict[str, Any]:
-    datasets = [
-        {
-            "id": d.id,
-            "title": d.title,
-            "bounds": d.bounds,
-            "minzoom": d.minzoom,
-            "maxzoom": d.maxzoom,
-        }
-        for d in list_datasets()
-    ]
+    datasets = []
+    for d in list_datasets():
+        rec = reg.get(d.id)
+        datasets.append(
+            {
+                "id": d.id,
+                "title": d.title,
+                "bounds": d.bounds,
+                "minzoom": d.minzoom,
+                "maxzoom": d.maxzoom,
+                "senc_path": rec.senc_path if rec else None,
+                "provenance_path": rec.provenance_path if rec else None,
+            }
+        )
     return {"base": ["osm", "geotiff", "enc"], "enc": {"datasets": datasets}}
 
 
