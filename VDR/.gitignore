@@ -8,3 +8,5 @@ chart-tiler/tests/*.tif
 testdata/*
 !testdata/README.md
 web-client/node_modules/
+
+opencpn_bridge/dist/
