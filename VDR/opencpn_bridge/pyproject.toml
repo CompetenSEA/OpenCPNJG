@@ -1,6 +1,6 @@
 [build-system]
-requires = ["scikit-build-core", "pybind11"]
-build-backend = "scikit_build_core.build"
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "opencpn_bridge"
@@ -12,6 +12,6 @@ requires-python = ">=3.8"
 [project.urls]
 Homepage = "https://opencpn.org"
 
-[tool.scikit-build]
-build-dir = "build"
-wheel.expand-macos-universal-tags = true
+[tool.setuptools]
+packages = ["opencpn_bridge"]
+package-dir = {"opencpn_bridge" = "py"}
