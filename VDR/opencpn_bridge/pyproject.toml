@@ -1,0 +1,17 @@
+[build-system]
+requires = ["scikit-build-core", "pybind11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "opencpn_bridge"
+version = "0.1.0"
+description = "Python bindings for OpenCPN SENC generation and feature queries"
+authors = [{name = "OpenCPN"}]
+requires-python = ">=3.8"
+
+[project.urls]
+Homepage = "https://opencpn.org"
+
+[tool.scikit-build]
+build-dir = "build"
+wheel.expand-macos-universal-tags = true
