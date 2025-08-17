@@ -16,3 +16,7 @@
   selection.
 - Exposed Prometheus metrics for tile latency and size and added CI
   performance-gate tests enforcing latency and payload budgets.
+- Build script now generates content-addressed static assets with
+  `manifest.json` and `PROVENANCE.txt`.
+- Added service-worker caching of sprites, glyphs and tiles with
+  IndexedDB LRU eviction.
