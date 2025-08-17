@@ -10,3 +10,7 @@
 - Converter discovery now checks `OPENCN_CM93_CLI` before `PATH` and
   falls back to GDAL when absent. `cm93_convert` also emits a GeoPackage
   with `cm93_pts`, `cm93_ln` and `cm93_ar` tables.
+- Web client sources renamed to `cm93-core` and `cm93-label` with
+  mariner parameters applied via style expressions instead of URL
+  parameters. Added UI toggles for label plane visibility and palette
+  selection.

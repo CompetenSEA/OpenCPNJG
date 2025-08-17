@@ -19,16 +19,9 @@ export function createMapAPI(map: any) {
     setDataset(id: string, bounds?: number[]) {
       datasetId = id;
       const style = map.getStyle ? map.getStyle() : { sources: { enc: { tiles: [] } } };
-      const { safety, shallow, deep } = params;
-      const qs = new URLSearchParams({
-        fmt: 'mvt',
-        safety: String(safety),
-        shallow: String(shallow),
-        deep: String(deep),
-      }).toString();
       style.sources.enc = {
         type: 'vector',
-        tiles: [`/tiles/enc/${id}/{z}/{x}/{y}?${qs}`],
+        tiles: [`/tiles/enc/${id}/{z}/{x}/{y}`],
       };
       style.sources.base = style.sources.enc;
       map.setStyle(style);
@@ -41,9 +34,7 @@ export function createMapAPI(map: any) {
     },
     setMarinerParams(p: Partial<MarinerParams>) {
       Object.assign(params, p);
-      if (datasetId) {
-        api.setDataset(datasetId);
-      }
+      map.setFilter('enc-depth', ['<=', ['get', 'depth'], params.safety]);
     },
     toggleLayer(id: string, visible: boolean) {
       map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
