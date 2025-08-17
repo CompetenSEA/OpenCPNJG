@@ -1,5 +1,9 @@
 """Light‑weight chart registry with caching.
 
+Usage
+-----
+>>> python -m registry PATH [PATH ...]
+
 The real project uses a richer catalogue; for tests we only implement the
 features required by the API endpoints.  Records are persisted to a small
 SQLite database on disk so the registry can be shared between processes.
@@ -31,6 +35,9 @@ class ChartRecord:
     path: Optional[str] = None
     url: Optional[str] = None
     tags: List[str] | None = None
+    scale_min: Optional[int] = None
+    scale_max: Optional[int] = None
+    senc_path: Optional[str] = None
 
 
 class Registry:
@@ -55,7 +62,10 @@ class Registry:
                 updated_at REAL,
                 path TEXT,
                 url TEXT,
-                tags TEXT
+                tags TEXT,
+                scale_min INTEGER,
+                scale_max INTEGER,
+                senc_path TEXT
             )
             """
         )
@@ -102,6 +112,32 @@ class Registry:
         )
         self.conn.commit()
 
+    def register_senc(self, meta_path: Path, senc_path: Path) -> None:
+        info = json.loads(Path(meta_path).read_text())
+        rid = senc_path.stem
+        bbox = info.get("bbox", [0, 0, 0, 0])
+        scale_min = int(info.get("scale_min", 0))
+        scale_max = int(info.get("scale_max", 0))
+        name = info.get("name", rid)
+        ts = time.time()
+        cur = self.conn.cursor()
+        cur.execute(
+            "REPLACE INTO charts (id,kind,name,bbox,minzoom,maxzoom,updated_at,scale_min,scale_max,senc_path) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                rid,
+                "senc",
+                name,
+                json.dumps(bbox),
+                0,
+                0,
+                ts,
+                scale_min,
+                scale_max,
+                str(senc_path),
+            ),
+        )
+        self.conn.commit()
+
     # -- scanning -----------------------------------------------------------------
     def scan(self, paths: Iterable[Path]) -> None:
         """Scan provided directories for chart artefacts."""
@@ -117,6 +153,11 @@ class Registry:
                 cog = cog_meta.with_suffix(".tif")
                 if cog.exists():
                     self.register_cog(cog_meta, cog)
+            for senc_meta in p.rglob("*.senc.json"):
+                base = senc_meta.name.replace(".senc.json", "")
+                senc = senc_meta.with_name(f"{base}.senc")
+                if senc.exists():
+                    self.register_senc(senc_meta, senc)
             for mb in p.rglob("*.mbtiles"):
                 if mb.with_suffix(".meta.json").exists():
                     continue
@@ -158,7 +199,7 @@ class Registry:
             return
         cur = self.conn.cursor()
         rows = cur.execute(
-            "SELECT id,kind,name,bbox,minzoom,maxzoom,updated_at,path,url,tags FROM charts ORDER BY updated_at DESC"
+            "SELECT id,kind,name,bbox,minzoom,maxzoom,updated_at,path,url,tags,scale_min,scale_max,senc_path FROM charts ORDER BY updated_at DESC"
         ).fetchall()
         self._cache = [
             ChartRecord(
@@ -172,6 +213,9 @@ class Registry:
                 path=row[7],
                 url=row[8],
                 tags=json.loads(row[9]) if row[9] else None,
+                scale_min=row[10],
+                scale_max=row[11],
+                senc_path=row[12],
             )
             for row in rows
         ]
@@ -276,3 +320,12 @@ def get_dataset(ds_id: str, enc_dir: Optional[Path] = None) -> Dataset | None:
         if ds.id == ds_id:
             return ds
     return None
+
+
+if __name__ == "__main__":  # pragma: no cover - CLI convenience
+    import argparse
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("paths", nargs="+", type=Path, help="Directories to scan")
+    args = parser.parse_args()
+    Registry().scan(args.paths)
