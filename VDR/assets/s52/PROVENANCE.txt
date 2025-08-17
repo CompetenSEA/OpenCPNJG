@@ -1,0 +1,6 @@
+Assets in this directory are generated from OpenCPN's S-52 data.
+
+To rebuild them:
+1. Run `python VDR/server-styling/build_s52_assets.py` (or `make -C VDR/server-styling assets`).
+2. The script reads `data/s57data/chartsymbols.xml` and the `rastersymbols-*.png` sprite sheets.
+3. Generated PNG and JSON files are not committed to git.
