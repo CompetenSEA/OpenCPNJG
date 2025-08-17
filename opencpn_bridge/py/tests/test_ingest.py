@@ -1,10 +1,10 @@
-import json
 import sqlite3
 import shutil
 from pathlib import Path
 import unittest
 
 from opencpn_bridge.py.ingest import ingest_dataset
+from opencpn_bridge.registry import list_datasets
 
 
 class IngestTests(unittest.TestCase):
@@ -34,32 +34,22 @@ class IngestTests(unittest.TestCase):
 
         with TemporaryDirectory() as tmp:
             src = Path(tmp)
-            meta = {"bounds": [0, 0, 1, 1], "minzoom": 0, "maxzoom": 10}
-            (src / "provenance.json").write_text(json.dumps(meta))
-            (src / "data.txt").write_text("data")
 
             ingest_dataset("ds1", src, "test")
 
             cache = self.root / ".cache" / "senc" / "ds1"
-            self.assertTrue((cache / "data.txt").exists())
+            self.assertTrue((cache / "provenance.json").exists())
 
-            conn = sqlite3.connect(self.registry)
-            cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM datasets WHERE id=?", ("ds1",))
-            self.assertEqual(cur.fetchone()[0], 1)
-            conn.close()
+            datasets = list(list_datasets())
+            self.assertEqual(len(datasets), 1)
+            ds = datasets[0]
+            self.assertEqual(ds["id"], "ds1")
+            self.assertEqual(ds["bounds"], [0, 0, 0, 0])
+            self.assertEqual(ds["minzoom"], 0)
+            self.assertEqual(ds["maxzoom"], 0)
 
-            meta["minzoom"] = 1
-            (src / "provenance.json").write_text(json.dumps(meta))
             ingest_dataset("ds1", src, "test")
-
-            conn = sqlite3.connect(self.registry)
-            cur = conn.cursor()
-            cur.execute("SELECT minzoom FROM datasets WHERE id=?", ("ds1",))
-            self.assertEqual(cur.fetchone()[0], 1)
-            cur.execute("SELECT COUNT(*) FROM datasets")
-            self.assertEqual(cur.fetchone()[0], 1)
-            conn.close()
+            self.assertEqual(len(list(list_datasets())), 1)
 
 
 if __name__ == "__main__":

@@ -1,22 +1,18 @@
 import json
-import shutil
 import sqlite3
 from pathlib import Path
 
+from .bridge import build_senc
+
 
 def ingest_dataset(dataset_id: str, src_root: str, dataset_type: str) -> None:
-    """Ingest a dataset into the SENC cache and registry."""
+    """Build a stub SENC for ``src_root`` and record it in the registry."""
     root = Path(__file__).resolve().parent.parent
-    src_root = Path(src_root)
+    src_path = Path(src_root)
     senc_root = root / ".cache" / "senc" / dataset_id
     senc_root.mkdir(parents=True, exist_ok=True)
 
-    for item in src_root.iterdir():
-        dest = senc_root / item.name
-        if item.is_dir():
-            shutil.copytree(item, dest, dirs_exist_ok=True)
-        else:
-            shutil.copy2(item, dest)
+    build_senc(str(src_path), str(senc_root))
 
     provenance_path = senc_root / "provenance.json"
     bounds = minzoom = maxzoom = None
@@ -26,6 +22,13 @@ def ingest_dataset(dataset_id: str, src_root: str, dataset_type: str) -> None:
         bounds = data.get("bounds")
         minzoom = data.get("minzoom")
         maxzoom = data.get("maxzoom")
+
+    if bounds is None:
+        bounds = [0, 0, 0, 0]
+    if minzoom is None:
+        minzoom = 0
+    if maxzoom is None:
+        maxzoom = 0
 
     registry_path = root / "registry" / "registry.sqlite"
     registry_path.parent.mkdir(parents=True, exist_ok=True)
@@ -59,11 +62,11 @@ def ingest_dataset(dataset_id: str, src_root: str, dataset_type: str) -> None:
             (
                 dataset_id,
                 dataset_type,
-                json.dumps(bounds) if bounds is not None else None,
+                json.dumps(bounds),
                 minzoom,
                 maxzoom,
                 str(senc_root),
-                str(provenance_path),
+                str(provenance_path) if provenance_path.exists() else None,
             ),
         )
     conn.close()
