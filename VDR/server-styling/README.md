@@ -8,6 +8,14 @@ python VDR/server-styling/sync_opencpn_assets.py --force
 ```
 Assets are downloaded according to `opencpn-assets.lock` and written to `server-styling/assets/`.
 
+## S-52 sprite assets
+```
+python VDR/server-styling/build_s52_assets.py
+# or
+make -C VDR/server-styling assets
+```
+Sprite sheets, colour tables and metadata are written to `VDR/assets/s52/`.
+
 ## Sprite & style build
 ```
 python VDR/server-styling/build_style_json.py --palette day
