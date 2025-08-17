@@ -1,26 +1,20 @@
 # OpenCPN Bridge
 
 This directory contains a small experimental bridge exposing parts of the
-[OpenCPN](https://opencpn.org) chart processing stack to Python.
-It packages a minimal C++ library together with `pybind11` wrappers
-so that Python code can build S57 SENC caches and query chart features.
-
-The implementation here is intentionally minimal – the heavy lifting
-performed by OpenCPN is **not** reproduced.  The functions simply store
-chart paths and return empty feature sets, acting as a scaffold for future
-work.
+[OpenCPN](https://opencpn.org) chart processing stack to Python.  The current
+implementation is a pure Python stub that records chart provenance and
+returns empty feature data.
 
 ## Source layout
 
 | Path | Origin | Notes |
 | ---- | ------ | ----- |
-| `bridge.cpp`, `bridge.h`, `pybind.cpp` | This repository | C++ handle registry and the Python bindings. |
+| `py/bridge.py` | This repository | Python stub implementing the public API. |
 | `CMakeLists.txt`, `pyproject.toml` | This repository | Build and packaging glue. |
 | `s57chart.cpp`, `Osenc.cpp`, `cm93.cpp`, `s52plib/` | Copied verbatim from the OpenCPN project | Currently **unused** in the build. They are kept as references for future integration and still carry the GPLv2+ license from OpenCPN. |
 
-Only the wrapper sources are compiled today; the copied OpenCPN files are
-not part of the build because they depend on large portions of the
-upstream application (wxWidgets, GDAL, PROJ, etc.).
+The copied OpenCPN files are not part of the stub because they depend on
+large portions of the upstream application (wxWidgets, GDAL, PROJ, etc.).
 
 ### Syncing with upstream
 
@@ -34,6 +28,10 @@ When OpenCPN is updated, refresh the copies manually:
 
 ## Building
 
+The Python stub requires no compilation.  To build the optional C++
+extension based on the ocpn-mini sources, configure CMake with
+`-DOPB_STUB_ONLY=OFF -DOPB_WITH_OCPN_MINI=ON`.
+
 ```bash
 cmake -S . -B build
 cmake --build build
@@ -41,19 +39,14 @@ cmake --build build
 
 The compiled extension module will be placed in `dist/`.
 
-No external libraries beyond a C++17 compiler and Python are required for
-this stub implementation.  Integrating the full OpenCPN sources would
-add dependencies on wxWidgets, GDAL, and other libraries that are not yet
-provided here.
-
 ## Python usage
 
 ```python
-from opencpn_bridge import build_senc, query_features
+from opencpn_bridge import build_senc, query_tile_mvt
 
-handle = build_senc("/path/to/chart.000")
-features = query_features(handle, (0.0, 0.0, 1.0, 1.0), 20000.0)
-print(features)
+handle = build_senc("/path/to/dataset", "/tmp/out")
+tile = query_tile_mvt(handle, 0, 0, 0, 0, 0, 0, 0)
+print(tile)
 ```
 
 ## Notes
@@ -75,7 +68,7 @@ bridge:
 2. **Implement SENC generation** – hook `build_senc` up to the S‑57 and
    CM93 readers once the above compiles.
 3. **Expose feature data** – populate real feature objects in
-   `query_features` instead of returning placeholders.
+   `query_tile_mvt` instead of returning placeholders.
 4. **Automated tests** – add Python and C++ unit tests exercising handle
    lifetime and basic query behaviour.
 5. **Wheel builds** – extend the packaging configuration to emit wheels for
