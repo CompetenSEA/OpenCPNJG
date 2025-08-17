@@ -107,12 +107,19 @@ def test_style_palettes_differ() -> None:
 
 
 def test_metrics_endpoint() -> None:
+    # Trigger metric collection
+    client.get("/tiles/cm93-core/0/0/0.pbf")
     r = client.get("/metrics")
     assert r.status_code == 200
-    assert b"tile_gen_ms" in r.content
+    assert b"tile_render_seconds" in r.content
+    assert b"tile_bytes_total" in r.content
 
 
 def test_metrics_endpoint_idempotent_import() -> None:
+    # Ensure minimal color table exists for reload
+    (DIST / "assets" / "s52" / "chartsymbols.xml").write_text(
+        "<root><color-table name='DAY_BRIGHT'></color-table></root>"
+    )
     mod = importlib.reload(tileserver)
     new_client = TestClient(mod.app)
     r = new_client.get("/metrics")

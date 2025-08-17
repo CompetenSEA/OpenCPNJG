@@ -35,12 +35,13 @@ from pydantic import BaseModel
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.gzip import GZipMiddleware
-from prometheus_client import (
+from prometheus_client import Counter
+from metrics import (
+    REGISTRY,
     CONTENT_TYPE_LATEST,
-    Counter,
-    Histogram,
-    CollectorRegistry,
     generate_latest,
+    tile_render_seconds,
+    tile_bytes_total,
 )
 
 try:  # pragma: no cover - redis optional
@@ -88,18 +89,32 @@ async def _exc_handler(_: Request, exc: Exception) -> JSONResponse:  # pragma: n
     logger.exception("unhandled error: %s", exc)
     return JSONResponse({"error": "internal server error"}, status_code=500)
 
-_prom_registry = globals().setdefault("_prom_registry", CollectorRegistry())
-_tile_gen_ms = globals().setdefault(
-    "_tile_gen_ms",
-    Histogram("tile_gen_ms", "Time spent generating tiles", unit="ms", registry=_prom_registry),
-)
-_cache_hits = globals().setdefault(
-    "_cache_hits", Counter("cache_hits", "Cache hits", registry=_prom_registry)
-)
+_prom_registry = REGISTRY
+if "_cache_hits" not in globals():
+    _cache_hits = Counter("cache_hits", "Cache hits", registry=_prom_registry)
 _redis: Optional["redis.Redis"] = (
     redis.from_url(os.environ["REDIS_URL"]) if redis and "REDIS_URL" in os.environ else None
 )
 _redis_ttl = int(os.environ.get("REDIS_TTL", "0"))
+
+
+@app.middleware("http")
+async def _metrics_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    path = request.url.path
+    kind: Optional[str] = None
+    if path.startswith("/tiles/cm93-core"):
+        kind = "cm93-core"
+    elif path.startswith("/tiles/cm93-label"):
+        kind = "cm93-label"
+    elif path.startswith("/tiles/geotiff"):
+        kind = "geotiff"
+    if kind:
+        tile_render_seconds.labels(kind=kind).observe(time.perf_counter() - start)
+        body = getattr(response, "body", b"")
+        tile_bytes_total.labels(kind=kind).inc(len(body))
+    return response
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 STYLING_DIST = BASE_DIR / "server-styling" / "dist"
@@ -203,8 +218,7 @@ def _render_mvt(cfg: ContourConfig, z: int, x: int, y: int) -> bytes:
         props["role"] = "safety"
         props["isSafety"] = True
 
-    with _tile_gen_ms.time():
-        return encode_mvt(feats)
+    return encode_mvt(feats)
 
 
 @lru_cache(maxsize=512)
@@ -652,12 +666,10 @@ if os.environ.get("IMPORT_API_ENABLED") == "1":
 # --- GeoTIFF tiles via pseudo MapProxy -------------------------------------
 _GEO_CACHE_SIZE = int(os.environ.get("GEO_LRU_SIZE", "256"))
 _geo_cache: "OrderedDict[str, bytes]" = globals().setdefault("_geo_cache", OrderedDict())
-_geo_hits = globals().setdefault(
-    "_geo_hits", Counter("geotiff_cache_hits", "GeoTIFF tile cache hits", registry=_prom_registry)
-)
-_geo_errors = globals().setdefault(
-    "_geo_errors", Counter("geotiff_errors", "GeoTIFF tile render errors", registry=_prom_registry)
-)
+if "_geo_hits" not in globals():
+    _geo_hits = Counter("geotiff_cache_hits", "GeoTIFF tile cache hits", registry=_prom_registry)
+if "_geo_errors" not in globals():
+    _geo_errors = Counter("geotiff_errors", "GeoTIFF tile render errors", registry=_prom_registry)
 
 
 def _render_geotiff(cid: str, z: int, x: int, y: int, fmt: str) -> bytes:
