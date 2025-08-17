@@ -21,9 +21,27 @@ def test_apply_offsets():
     feats = load_features()
     offsets = _load_offsets(FIX / "offsets.csv")
     adj = apply_offsets(feats, offsets)
-    # first feature should shift left by 0.01
+    # first feature should shift left by ~0.01 degrees (1113.2 m at equator)
     x0 = adj[0]["geometry"]["coordinates"][0][0][0]
     assert abs(x0 - 0.0) < 1e-6
+
+
+def test_apply_offsets_high_lat():
+    feats = [
+        {
+            "type": "Feature",
+            "properties": {"cell_id": 9},
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [[[0, 59.5], [0, 60.5], [1, 60.5], [1, 59.5], [0, 59.5]]],
+            },
+        }
+    ]
+    offsets = {"9": (1113.2, 0.0)}
+    adj = apply_offsets(feats, offsets)
+    x0 = adj[0]["geometry"]["coordinates"][0][0][0]
+    # At latitude 60°, 1113.2 m ≈ 0.02°
+    assert abs(x0 - 0.02) < 1e-6
 
 
 def test_validate_offsets():

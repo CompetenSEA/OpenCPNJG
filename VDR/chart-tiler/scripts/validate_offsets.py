@@ -8,6 +8,7 @@ from typing import Dict, Iterable, List
 
 from shapely.geometry import shape
 from shapely.affinity import translate
+import math
 
 
 def _load_offsets(path: Path) -> Dict[str, tuple[float, float]]:
@@ -19,7 +20,12 @@ def _load_offsets(path: Path) -> Dict[str, tuple[float, float]]:
     return offs
 
 
-def _apply(geom, dx: float, dy: float):
+def _apply(geom, dx_m: float, dy_m: float):
+    """Translate ``geom`` by meter offsets converted to degrees."""
+    lat = geom.centroid.y
+    phi = math.radians(lat)
+    dx = dx_m / (111_320 * math.cos(phi)) if math.cos(phi) else 0.0
+    dy = dy_m / 111_320
     return translate(geom, xoff=dx, yoff=dy)
 
 
