@@ -16,5 +16,17 @@ opb = "opencpn_bridge.cli.opb:app"
 Homepage = "https://opencpn.org"
 
 [tool.setuptools]
-packages = ["opencpn_bridge"]
-package-dir = {"opencpn_bridge" = "py"}
+packages = [
+    "opencpn_bridge",
+    "opencpn_bridge.cli",
+    "opencpn_bridge.tools",
+    "opencpn_bridge.tileserver",
+    "opencpn_bridge.registry",
+]
+
+[tool.setuptools.package-dir]
+"opencpn_bridge" = "py"
+"opencpn_bridge.cli" = "cli"
+"opencpn_bridge.tools" = "tools"
+"opencpn_bridge.tileserver" = "tileserver"
+"opencpn_bridge.registry" = "registry"
