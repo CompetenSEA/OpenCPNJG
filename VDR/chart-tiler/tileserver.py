@@ -21,6 +21,7 @@ from collections import OrderedDict
 from functools import lru_cache
 from pathlib import Path
 import hashlib
+import resource
 from registry import get_registry, ChartRecord, list_datasets, get_dataset
 from typing import Dict, Optional, List, Any
 
@@ -42,6 +43,8 @@ from metrics import (
     generate_latest,
     tile_render_seconds,
     tile_bytes_total,
+    tile_size_bytes,
+    process_resident_memory_bytes,
 )
 
 try:  # pragma: no cover - redis optional
@@ -98,6 +101,16 @@ _redis: Optional["redis.Redis"] = (
 _redis_ttl = int(os.environ.get("REDIS_TTL", "0"))
 
 
+def _rss_bytes() -> int:
+    """Return current process resident memory in bytes."""
+    try:
+        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    except Exception:  # pragma: no cover - platform specific
+        return 0
+    # Linux reports kilobytes, macOS bytes
+    return usage if sys.platform == "darwin" else usage * 1024
+
+
 @app.middleware("http")
 async def _metrics_middleware(request: Request, call_next):
     start = time.perf_counter()
@@ -113,7 +126,10 @@ async def _metrics_middleware(request: Request, call_next):
     if kind:
         tile_render_seconds.labels(kind=kind).observe(time.perf_counter() - start)
         body = getattr(response, "body", b"")
-        tile_bytes_total.labels(kind=kind).inc(len(body))
+        size = len(body)
+        tile_bytes_total.labels(kind=kind).inc(size)
+        tile_size_bytes.labels(kind=kind).set(size)
+        process_resident_memory_bytes.set(_rss_bytes())
     return response
 
 BASE_DIR = Path(__file__).resolve().parents[1]
