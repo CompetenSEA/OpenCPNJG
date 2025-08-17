@@ -13,6 +13,7 @@ _MAPPING = {
     5: "SOUNDG",
     6: "WRECKS",
     7: "OBSTRN",
+    8: "LIGHTS",
 }
 
 
