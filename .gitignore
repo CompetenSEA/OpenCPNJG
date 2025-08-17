@@ -28,3 +28,5 @@ tags
 VDR/chart-tiler/data/**/*.cog.tif
 VDR/chart-tiler/data/**/*.cog.json
 VDR/chart-tiler/registry.sqlite
+# Native cm93 converter artefacts
+VDR/tools/bin/

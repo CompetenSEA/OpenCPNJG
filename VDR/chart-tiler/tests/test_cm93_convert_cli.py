@@ -21,6 +21,7 @@ def test_run_cm93_convert(tmp_path, monkeypatch):
         "(out/'pts.geojson').write_text('{}')\n"
     )
     script.chmod(stat.S_IRWXU)
+    monkeypatch.delenv("OPENCN_CM93_CLI", raising=False)
     monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH','')}")
     src = tmp_path / "src"; src.mkdir()
     out = tmp_path / "out"

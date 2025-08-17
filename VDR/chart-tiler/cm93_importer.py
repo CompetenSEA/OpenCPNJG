@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import argparse
 import csv
+import logging
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -22,8 +24,18 @@ def run_cm93_convert(src: Path, out_dir: Path) -> bool:
     otherwise so callers may fall back to GDAL or pre-converted sources.
     """
 
-    cli = shutil.which("cm93_convert")
+    cli_env = os.environ.get("OPENCN_CM93_CLI")
+    cli: str | None = None
+    if cli_env:
+        p = Path(cli_env)
+        if p.exists():
+            cli = str(p)
+        else:
+            cli = shutil.which(cli_env)
     if not cli:
+        cli = shutil.which("cm93_convert")
+    if not cli:
+        logging.info("cm93_convert not available; falling back to GDAL")
         return False
     subprocess.check_call([cli, "--src", str(src), "--out", str(out_dir), "--schema", "vdr"])
     return True
