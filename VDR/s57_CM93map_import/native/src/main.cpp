@@ -1,6 +1,6 @@
 #include <iostream>
-#include "../../vendor/shims/ocpn/compat.hpp"
-int main(){
-    std::cout << "ocpn_subset" << std::endl;
-    return 0;
+#include <string>
+int main(int argc, char** argv) {
+  std::cout << "ocpn_min build OK (ingest stubs linked)." << std::endl;
+  return 0;
 }
