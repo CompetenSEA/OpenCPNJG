@@ -34,3 +34,4 @@ GDAL reference in libs/iso8211/src/ddffielddefn.cpp
 GDAL reference in libs/iso8211/src/ddfrecord.cpp
 GDAL reference in libs/iso8211/src/ddfsubfielddefn.cpp
 GDAL reference in libs/iso8211/src/ddfrecordindex.cpp
+Analysis: enumerated ISO8211, S57, and CM93 files; build script currently reports denied includes from GUI/GDAL.
