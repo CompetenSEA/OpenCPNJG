@@ -74,7 +74,7 @@
  */
 
 #include <algorithm>
-#include "gdal/cpl_conv.h"
+#include "cpl_conv.h"
 #include "iso8211.h"
 
 /************************************************************************/

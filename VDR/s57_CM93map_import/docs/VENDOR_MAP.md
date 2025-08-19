@@ -27,3 +27,46 @@
 | libs/s57-charts/src/s57featuredefns.cpp | S57FeatureDefns | Feature definition utilities | cpl_conv.h |
 | libs/s57-charts/src/s57reader.cpp | S57Reader | Read S57 records and build features | cpl_conv.h, cpl_string.h |
 | libs/s57-charts/src/s57registrar_mgr.cpp | S57RegistrarMgr | Manage multiple registrars | cpl_conv.h |
+## CPL usage in vendored OpenCPN subset
+
+| File | Included CPL headers | Referenced CPL symbols |
+| ---- | -------------------- | ---------------------- |
+| libs/iso8211/include/iso8211.h | cpl_port.h | – |
+| libs/iso8211/include/s57.h | – | CPL_DLL |
+| libs/iso8211/src/ddfmodule.cpp | cpl_conv.h | CPLAssert, CPLMalloc, CPLFree, CPLRealloc, CPLError, CPLE_AppDefined, CPLE_FileIO, CPLE_OpenFailed, VSIFRead, VSIFWrite |
+| libs/iso8211/src/ddfrecord.cpp | cpl_conv.h | CPLAssert, CPLDebug, CPLMalloc, CPLFree, CPLRealloc, CPLError, CPLE_AppDefined, CPLE_FileIO, VSIFRead, VSIFWrite |
+| libs/iso8211/src/ddffield.cpp | cpl_conv.h | – |
+| libs/iso8211/src/ddffielddefn.cpp | cpl_string.h | CPLAssert, CPLMalloc, CPLRealloc, CPLFree, CPLStrdup, CPLError, CPLE_AppDefined |
+| libs/iso8211/src/ddfsubfielddefn.cpp | cpl_conv.h | CPLAssert, CPLDebug, CPLMalloc, CPLFree, CPLStrdup, CPLError, CPLE_AppDefined, CPL_LSB |
+| libs/iso8211/src/ddfutils.cpp | cpl_conv.h | CPLMalloc, CPLStrdup |
+| libs/iso8211/src/ddfrecordindex.cpp* | cpl_conv.h | CPLFree, CPLRealloc, CPL_CSVID |
+
+*`ddfrecordindex.cpp` includes `s57.h` (OGR) and is excluded from the build.*
+
+## CPL symbol resolution
+
+| CPL symbol | Implemented in | Notes |
+| ---------- | -------------- | ----- |
+| CPLMalloc, CPLFree, CPLRealloc, CPLStrdup | cpl_conv.cpp | requires cpl_conv.h, cpl_vsi.h, cpl_error.h |
+| CPLError, CPLDebug, CPLAssert, CPLE_AppDefined, CPLE_FileIO, CPLE_OpenFailed | cpl_error.cpp | requires cpl_error.h (cpl_port.h) |
+| VSIFRead, VSIFWrite | cpl_vsisimple.cpp | requires cpl_vsi.h |
+| CPL_LSB, CPL_DLL | cpl_port.h | header only |
+
+### CPL header dependencies
+
+| CPL header | Companion headers |
+| ---------- | ----------------- |
+| cpl_port.h | – |
+| cpl_error.h | cpl_port.h |
+| cpl_vsi.h | cpl_port.h, cpl_error.h |
+| cpl_conv.h | cpl_port.h, cpl_vsi.h, cpl_error.h |
+| cpl_string.h | cpl_vsi.h, cpl_error.h, cpl_conv.h |
+
+## Forbidden includes report
+
+The following files reference forbidden headers and are excluded from the build:
+
+- libs/iso8211/include/s57.h → `#include "gdal/ogr_feature.h"`
+- libs/iso8211/src/ddfrecordindex.cpp → `#include "s57.h"` (transitively pulls OGR)
+
+No other vendored files include `ogr_*`, `s52*`, `wx/`, `gl*`, `Osenc*`, or `Quilt*`.
