@@ -102,7 +102,7 @@
 
 #include <ctype.h>
 
-#include "gdal/cpl_string.h"
+#include "cpl_string.h"
 #include "iso8211.h"
 
 /************************************************************************/

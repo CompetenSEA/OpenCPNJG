@@ -21,3 +21,5 @@
 - Added service-worker caching of sprites, glyphs and tiles with
   IndexedDB LRU eviction.
 - Added vendor script and shims for ISO-8211 ingestion stub build.
+- Vendored minimal GDAL CPL sources and linked ocpn_min without OGR/wx/s52.
+- Probe script now scans user-supplied CM93 test cells when available.
