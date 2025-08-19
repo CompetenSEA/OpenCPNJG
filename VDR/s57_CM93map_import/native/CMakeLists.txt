@@ -15,15 +15,21 @@ add_library(gdal_cpl STATIC ${GDAL_CPL_SRCS})
 target_include_directories(gdal_cpl PUBLIC
   ${CMAKE_SOURCE_DIR}/../vendor/gdal_cpl)
 
-add_library(ocpn_core STATIC ${OCPN_SRCS})
-target_link_libraries(ocpn_core PUBLIC gdal_cpl)
-target_include_directories(ocpn_core PUBLIC
+add_library(ocpn_s57 STATIC ${OCPN_SRCS} src/s57_iter.cpp src/ndjson.cpp src/types.hpp)
+target_link_libraries(ocpn_s57 PUBLIC gdal_cpl)
+target_include_directories(ocpn_s57 PUBLIC
   ${CMAKE_SOURCE_DIR}/../vendor/opencpn_subset
   ${CMAKE_SOURCE_DIR}/../vendor/opencpn_subset/src/libs/iso8211/include
-)
+  ${CMAKE_SOURCE_DIR}/src)
 
-add_executable(ocpn_min ${CMAKE_SOURCE_DIR}/src/main.cpp)
-target_link_libraries(ocpn_min PRIVATE ocpn_core)
+add_library(ocpn_cm93 STATIC src/cm93_iter.cpp src/ndjson.cpp src/types.hpp)
+target_link_libraries(ocpn_cm93 PUBLIC gdal_cpl)
+target_include_directories(ocpn_cm93 PUBLIC ${CMAKE_SOURCE_DIR}/src)
+
+find_package(ZLIB REQUIRED)
+
+add_executable(ocpn_min src/main.cpp)
+target_link_libraries(ocpn_min PRIVATE ocpn_s57 ocpn_cm93 gdal_cpl ZLIB::ZLIB)
 
 # Quick smoke: fail build if forbidden includes remain
 add_custom_target(check_includes
