@@ -8,8 +8,9 @@ make -j$(nproc) VERBOSE=1 | tee build.log
 if grep ocpn_min build.log | grep -E 'ogr|wx|GL|Osenc'; then
   echo "forbidden symbols in link line" >&2; exit 1; fi
 ./ocpn_min --help
-if [ -f ../../testdata/sample.000 ]; then
-  ./ocpn_min --probe ../../testdata/sample.000
+sample=$(find ../../testdata -type f -name '*.000' | head -n1 || true)
+if [ -n "$sample" ]; then
+  ./ocpn_min --probe "$sample"
 else
-  echo "skipping probe: no sample.000" >&2
+  echo "skipping probe: no .000 files in testdata" >&2
 fi
