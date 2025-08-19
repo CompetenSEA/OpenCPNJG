@@ -26,15 +26,5 @@ Vendored CPL files (10) with SHA256:
 - gdal_cpl/cpl_string.h `114d33eea7cdafc52cd3211c1cc0e60402902e396dcee700f4019ee633ec2c1f`
 - gdal_cpl/cpl_vsi.h `a62ef8e893d5ba24b676f29e1a1aaff9ad46f1cb9d9af261a228bdedf447a7f2`
 - gdal_cpl/cpl_vsisimple.cpp `e1b9e1233774b18a554b6e10765c758f835ff61740e69c7fbe7e2d54f82af86e`
-- gdal_cpl/cpl_config.h `204421964d06cedafc9be2d127515cb4ef0438d9cf8c6a4727ae79245a6ddcd2`
-- gdal_cpl/cpl_conv.cpp `e6aeb1e6586ecc723a1be1c82efd303adf5a3ce475810487a2c9bd25bf98708f`
-- gdal_cpl/cpl_conv.h `1feb63199a2687d02716152700aaa55fd907bab01b6a9c288e630637359ccc61`
-- gdal_cpl/cpl_error.cpp `8845bff8ede299bb5ef0caa235f904fe23ba069feb61dae36adfd01de2cde3c6`
-- gdal_cpl/cpl_error.h `f909fdffa83b9e5cb50eb33af59f9420fe7c747645269ba3679f9435cb51fc48`
-- gdal_cpl/cpl_port.h `d9a1190aac4cf07f06f928bb073ce6e7ed91c9e4921e87389d209d3673e3b606`
-- gdal_cpl/cpl_string.cpp `6508978512ab32fac5c927584a063936e383fd6597d9cea7fd049e0c315b62c0`
-- gdal_cpl/cpl_string.h `114d33eea7cdafc52cd3211c1cc0e60402902e396dcee700f4019ee633ec2c1f`
-- gdal_cpl/cpl_vsi.h `a62ef8e893d5ba24b676f29e1a1aaff9ad46f1cb9d9af261a228bdedf447a7f2`
-- gdal_cpl/cpl_vsisimple.cpp `e1b9e1233774b18a554b6e10765c758f835ff61740e69c7fbe7e2d54f82af86e`
 
 Test data: CM93 and S-57 sample cells must be supplied externally in `testdata/`.

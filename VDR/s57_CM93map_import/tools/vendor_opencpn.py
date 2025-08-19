@@ -111,9 +111,9 @@ def main():
 
     prov = root / 'docs' / 'PROVENANCE.md'
     text = prov.read_text()
-    text = re.sub(r'Vendored CPL files.*',
-                  'Vendored CPL files ({0}) with SHA256:\n{1}'.format(len(sha_lines), '\n'.join(sha_lines)),
-                  text, count=1)
+    block_pattern = r'Vendored CPL files \([^\n]*\) with SHA256:\n(?:- .+\n)*'
+    replacement = 'Vendored CPL files ({0}) with SHA256:\n{1}\n'.format(len(sha_lines), '\n'.join(sha_lines))
+    text = re.sub(block_pattern, replacement, text)
     prov.write_text(text)
 
 if __name__ == '__main__':
