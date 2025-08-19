@@ -1,15 +1,1 @@
-../gui/src/cm93.cpp
-../gui/src/s57chart.cpp
-../libs/iso8211/src/ddffield.cpp
-../libs/iso8211/src/ddffielddefn.cpp
-../libs/iso8211/src/ddfmodule.cpp
-../libs/iso8211/src/ddfrecord.cpp
-../libs/iso8211/src/ddfrecordindex.cpp
-../libs/iso8211/src/ddfsubfielddefn.cpp
-../libs/iso8211/src/ddfutils.cpp
-../libs/s57-charts/src/ogrs57datasource.cpp
-../libs/s57-charts/src/ogrs57layer.cpp
-../libs/s57-charts/src/s57classregistrar.cpp
-../libs/s57-charts/src/s57featuredefns.cpp
-../libs/s57-charts/src/s57reader.cpp
-../libs/s57-charts/src/s57registrar_mgr.cpp
+stub.cpp
