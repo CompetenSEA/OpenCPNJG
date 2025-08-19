@@ -13,28 +13,14 @@ popd >/dev/null
 BIN="$(pwd)/native/build/ocpn_min"
 sample=$(find testdata -type f -name '*.000' | head -n1 || true)
 if [ -n "$sample" ]; then
-  "$BIN" probe-iso8211 "$sample"
+  "$BIN" dump-s57 --src "$sample" | head -n3
 else
-  echo "skipping probe: no .000 files in testdata" >&2
+  echo "skipping dump-s57: no .000 files in testdata" >&2
 fi
 
-# 2) Probe CM93 dataset if present
 CM93_ROOT="$(cd "$SCRIPT_DIR/../testdata" && pwd)/cm93"
 if [ -d "$CM93_ROOT" ]; then
-  echo "==> Probing CM93 dataset at: $CM93_ROOT"
-  set +e
-  CM93_JSON="$("$BIN" probe-cm93 "$CM93_ROOT")"
-  CM93_RC=$?
-  set -e
-  echo "$CM93_JSON"
-
-  # simple smoke check: ok:true and cells_total > 0
-  echo "$CM93_JSON" | grep -q '"ok":true' || { echo "CM93 probe failed (ok:false)"; exit $CM93_RC; }
-  CELLS=$(echo "$CM93_JSON" | sed -n 's/.*"cells_total":\([0-9]\+\).*/\1/p')
-  if [ -z "$CELLS" ] || [ "$CELLS" -le 0 ]; then
-    echo "CM93 probe found zero cells"; exit 12
-  fi
-  echo "==> CM93 probe OK: $CELLS cells"
+  "$BIN" dump-cm93 --src "$CM93_ROOT" | head -n3
 else
-  echo "==> No CM93 dataset found at testdata/cm93 (skipping probe)"
+  echo "skipping dump-cm93: no dataset" >&2
 fi

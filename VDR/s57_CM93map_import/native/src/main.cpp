@@ -7,6 +7,9 @@
 #include <cctype>
 
 #include "iso8211.h"
+#include "s57_iter.hpp"
+#include "cm93_iter.hpp"
+#include "ndjson.hpp"
 
 namespace fs = std::filesystem;
 
@@ -18,6 +21,38 @@ static bool file_exists(const fs::path& p) {
 static bool dir_exists(const fs::path& p) {
   std::error_code ec;
   return fs::exists(p, ec) && fs::is_directory(p, ec);
+}
+
+static int dump_s57_cmd(const std::string& src) {
+  try {
+    auto reader = open_s57(src);
+    DatasetInfo ds{"s57", src};
+    write_dataset(std::cout, ds);
+    Feature f;
+    while (s57_next(reader, f)) {
+      write_feature(std::cout, ds, f);
+    }
+    return 0;
+  } catch (...) {
+    std::cerr << "dump-s57: invalid source\n";
+    return 11;
+  }
+}
+
+static int dump_cm93_cmd(const std::string& root) {
+  try {
+    auto reader = open_cm93(root);
+    DatasetInfo ds{"cm93", root};
+    write_dataset(std::cout, ds);
+    Feature f;
+    while (cm93_next(reader, f)) {
+      write_feature(std::cout, ds, f);
+    }
+    return 0;
+  } catch (...) {
+    std::cerr << "dump-cm93: invalid source\n";
+    return 11;
+  }
 }
 
 static int probe_cm93(const std::string& root_in) {
@@ -126,6 +161,13 @@ static int probe_cm93(const std::string& root_in) {
 }
 
 int main(int argc, char** argv) {
+  if (argc >= 4 && std::string(argv[1]) == "dump-s57" && std::string(argv[2]) == "--src") {
+    return dump_s57_cmd(argv[3]);
+  }
+  if (argc >= 4 && std::string(argv[1]) == "dump-cm93" && std::string(argv[2]) == "--src") {
+    return dump_cm93_cmd(argv[3]);
+  }
+
   if (argc >= 3 && std::string(argv[1]) == "probe-iso8211") {
     DDFModule module;
     if (!module.Open(argv[2], FALSE)) {
@@ -142,6 +184,8 @@ int main(int argc, char** argv) {
   }
 
   std::cerr << "Usage:\n"
+               "  ocpn_min dump-s57  --src <cell_or_dir>\n"
+               "  ocpn_min dump-cm93 --src <cm93_root>\n"
                "  ocpn_min probe-iso8211 <cell.000>\n"
                "  ocpn_min probe-cm93    <cm93_root>\n";
   return 10; // bad args
